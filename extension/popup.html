@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<style>
+  /* design tokens — mirror DESIGN.md; the popup keeps its own copy on purpose
+     (extension pages share no stylesheet with the web UIs) */
+  :root {
+    --bg: #17181a; --panel: #1d1f21; --panel-2: #1a1c1f;
+    --border: #2a2c2f; --border-strong: #4a4d50;
+    --fg: #e8e8e6; --muted: #9a9c9e; --faint: #6f7274;
+    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
+    --danger: #ef4444; --warn: #f59e0b;
+    --r: 10px; --r-sm: 8px;
+  }
+  body { width: 300px; margin: 0; background: var(--bg); color: var(--fg); font: 13px system-ui, -apple-system, sans-serif; }
+  * { user-select: none; -webkit-user-select: none; }
+
+  /* header */
+  header {
+    padding: 12px 14px; font-weight: 700; border-bottom: 1px solid #2a2c2f;
+    display: flex; justify-content: space-between; align-items: center;
+    background: linear-gradient(180deg, #1a1c1f, #17181a);
+  }
+  header span { display: flex; align-items: center; gap: 6px; }
+  header img { border-radius: 3px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 6px; padding: 10px 10px 0; }
+  .tab {
+    flex: 1; background: none; border: 1px solid #2a2c2f; color: #9a9c9e;
+    border-radius: 8px; padding: 6px 0; font-size: 12px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .tab:hover { color: #c0c2c4; border-color: #3a3c3f; }
+  .tab.active { background: #1d1f21; color: #e8e8e6; border-color: #4a4d50; }
+
+  /* list */
+  .list { max-height: 340px; overflow-y: auto; padding: 8px; }
+  .list::-webkit-scrollbar { width: 5px; }
+  .list::-webkit-scrollbar-track { background: transparent; }
+  .list::-webkit-scrollbar-thumb { background: #2a2c2f; border-radius: 3px; }
+
+  .item {
+    display: flex; gap: 10px; align-items: center; padding: 8px;
+    border: 1px solid #2a2c2f; border-radius: 10px; margin-bottom: 8px; cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .item:hover { border-color: #4a4d50; background: #1d1f21; }
+  .item img { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; pointer-events: none; -webkit-user-drag: none; }
+  .item .meta { color: #9a9c9e; font-size: 11px; }
+
+  .titem {
+    padding: 8px 10px; border: 1px solid #2a2c2f; border-radius: 10px; margin-bottom: 8px;
+    cursor: pointer; font-size: 12.5px; line-height: 1.45; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    transition: border-color .15s, background .15s;
+  }
+  .titem:hover { border-color: #4a4d50; background: #1d1f21; }
+  .titem .when { color: #9a9c9e; font-size: 10px; margin-top: 4px; }
+
+  /* the error detail here is the one thing a user needs to select + copy (to
+     paste a failure into a bug report) — `* { user-select: none }` used to
+     block that even though popup.js exempts .empty from its selectstart guard */
+  .empty { color: #9a9c9e; text-align: center; padding: 24px 10px; line-height: 1.6;
+    user-select: text; -webkit-user-select: text; }
+  .empty span { user-select: text; -webkit-user-select: text; }
+
+  .status { padding: 8px 14px; color: #22c55e; font-size: 12px; min-height: 18px; transition: color .15s; }
+  .hint { padding: 0 14px 12px; color: #6f7274; font-size: 11px; line-height: 1.5; }
+  /* per-site notices (undelivered captures / paste fallback) — a row of its own,
+     so an async check can never overwrite the action status line */
+  .notice { margin: 0 14px 6px; color: var(--warn); font-size: 10.5px; line-height: 1.5; }
+  .notice.hidden { display: none; }
+
+  /* buttons */
+  #sync {
+    background: none; border: 1px solid #2a2c2f; color: #9a9c9e; border-radius: 8px;
+    font-size: 11px; padding: 4px 9px; cursor: pointer; display: flex; align-items: center; gap: 4px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  #sync:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
+  #sync:active { transform: scale(.96); }
+
+  .unhide {
+    display: block; margin: 0 14px 6px; background: none; border: 1px solid #2a2c2f;
+    color: #9a9c9e; border-radius: 8px; font-size: 11px; padding: 5px 9px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .unhide:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
+
+  /* p button hide/show — the one control that owns the global flag, so it
+     stays visible in every state (the per-site row below comes and goes) */
+  .fab-row { padding-top: 2px; }
+  #fab-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: calc(100% - 28px);
+  }
+  #fab-toggle .ic { width: 13px; height: 13px; }
+  #fab-toggle.off { color: #f59e0b; border-color: #5a4a20; background: rgba(245,158,11,.06); }
+  #fab-toggle.off:hover { color: #fbbf24; border-color: #6b5a2a; background: rgba(245,158,11,.1); }
+
+  /* port row */
+  .port-row { display: flex; gap: 6px; margin: 0 14px 4px; }
+  .port-row input {
+    flex: 1; background: #1d1f21; border: 1px solid #2a2c2f; color: #e8e8e6;
+    border-radius: 8px; font-size: 11px; padding: 5px 8px; outline: none; min-width: 0;
+    transition: border-color .15s;
+    user-select: text; -webkit-user-select: text; /* the port value must be selectable */
+  }
+  .port-row input:focus { border-color: #4a4d50; }
+  .port-row input::placeholder { color: #6f7274; }
+  .port-row button {
+    background: none; border: 1px solid #2a2c2f; color: #9a9c9e; border-radius: 8px;
+    font-size: 11px; padding: 5px 10px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .port-row button:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
+  .port-status { margin: 0 14px 6px; color: #6f7274; font-size: 10px; min-height: 12px; }
+
+  /* icons */
+  .ic { display: inline-block; width: 12px; height: 12px; background-color: currentColor; -webkit-mask: var(--m) center/contain no-repeat; mask: var(--m) center/contain no-repeat; }
+  .ic-sync { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>'); }
+  .ic-eye { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'); }
+  .ic-eye-off { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.79 13.79 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="m2 2 20 20"/></svg>'); }
+
+  /* copy confirmation flash */
+  .item.copied, .titem.copied { border-color: var(--accent); background: var(--accent-soft); }
+  .item.copied::after, .titem.copied::after {
+    content: 'Copied ✓'; color: var(--accent); font-size: 11px; font-weight: 700; margin-left: auto; flex: none;
+  }
+
+  /* ---------- UX polish ---------- */
+  /* one keyboard-focus treatment for every control (previously Tab was invisible) */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tab, #sync, .unhide, .port-row button { transition: color .15s, border-color .15s, background .15s, transform .08s; }
+  .tab:active, #sync:active, .unhide:active, .port-row button:active { transform: scale(.97); }
+  .item, .titem { transition: border-color .15s, background .15s, transform .08s; }
+  .item:active, .titem:active { transform: translateY(1px); }
+  /* items are keyboard-reachable divs (role=button + tabindex, wired in popup.js) */
+  .item:focus-visible, .titem:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--border-strong); }
+  /* sync spins while it re-probes the server */
+  #sync[aria-busy='true'] .ic-sync { animation: ppspin .8s linear infinite; }
+  @keyframes ppspin { to { transform: rotate(360deg); } }
+  .status { min-height: 20px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; }
+  .status.err { color: var(--danger); }
+  .list { scrollbar-gutter: stable; }
+  .empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <header><span><img src="icon.png" width="14" height="14" alt=""> ProofPipe</span> <button id="sync" title="Reload from the ProofPipe server" aria-label="Reload from the ProofPipe server"><i class="ic ic-sync" aria-hidden="true"></i> Sync now</button></header>
+  <div class="tabs" role="tablist" aria-label="ProofPipe panels">
+    <button id="tab-caps" class="tab active" role="tab" aria-selected="true" aria-controls="list">Captures</button>
+    <button id="tab-texts" class="tab" role="tab" aria-selected="false" aria-controls="list">Texts from phone</button>
+  </div>
+  <div class="list" id="list" role="tabpanel" aria-labelledby="tab-caps" aria-label="Captures and texts"><div class="empty">Loading…</div></div>
+  <div class="status" id="status" role="status"></div>
+  <div class="port-row">
+    <input id="port-input" type="text" inputmode="numeric" placeholder="Port (auto)" aria-label="ProofPipe server port — leave empty to discover it automatically">
+    <button id="port-save" title="Save the port override — probed first on every discovery" aria-label="Save the port override">Set</button>
+  </div>
+  <div class="port-status" id="port-status" role="status" aria-live="polite"></div>
+  <div class="fab-row">
+    <button id="fab-toggle" class="unhide" title="Hide or show the p button on every site">
+      <i class="ic ic-eye"></i> <span id="fab-toggle-label">Hide p button everywhere</span>
+    </button>
+  </div>
+  <button id="unhide" class="unhide">Show p button on this site</button>
+  <div class="notice hidden" id="notice"></div>
+  <div class="hint">Click a capture to copy it, then Ctrl+V into any chat. For drag-and-drop use the <b>p</b> button on the page — drag it to move it, right-click it to hide it on that site. Selected text anywhere → right-click → "Send to phone via ProofPipe".</div>
+  <script src="toPng.js"></script>
+  <script src="discovery.js"></script>
+  <script src="files.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

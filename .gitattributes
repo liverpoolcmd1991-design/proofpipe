@@ -1,0 +1,13 @@
+# Normalize line endings: this repo is LF even on Windows (which tends to
+# default core.autocrlf to true and produces CRLF churn otherwise).
+* text=auto
+*.js text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.md text eol=lf
+*.webmanifest text eol=lf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary

@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # npm dependency updates. Caret ranges are kept on purpose (CONVENTIONS.md):
+  # dependabot PRs land as explicit reviewable bumps rather than silent drift,
+  # which is how sharp/better-sqlite3 prebuild breakage gets caught before it
+  # lands on a user's machine.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # only production deps — devDeps (eslint/globals) churn adds noise without
+    # user-facing risk
+    allow:
+      - dependency-type: "production"
+    groups:
+      fastify:
+        patterns:
+          - "@fastify/*"
+  # keep the GitHub Actions versions current (actions/checkout, actions/setup-node)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"

@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- the app is dark end to end: declaring it (a) kills the white flash before
+     style.css applies and (b) gets native scrollbars/form chrome that belong on
+     a dark surface instead of light ones the user cannot restyle -->
+<meta name="color-scheme" content="dark">
+<meta name="app-version" content="__PP_VERSION__">
+<title>ProofPipe</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/style.css?v=__ASSET_STYLE__">
+</head>
+<body>
+<!-- ONE band across the top of the window. The brand row and the compose bar used
+     to be two stacked rows: a ~49px header whose right half was permanently empty
+     plus a ~69px bar holding a 1338px-wide single-line field — 118px of chrome for
+     one idea. They are one 64px bar now, and the field is capped at 560px so Send
+     never has to travel. -->
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true"><i class="ic ic-pipe"></i></span> proofpipe</div>
+  <!-- THE COMPOSE GROUP: the recent-texts glance plus the field it belongs to.
+       The glance was a two-row card ABOVE the captures grid, where it measured
+       112px of the card and pushed the first capture row down to y271 — the
+       library paid for a text list. One 28px row beside the field answers "what
+       did I just send / what did my phone just say" where the eye already is
+       while typing, and costs the grid nothing. -->
+  <div class="compose-group">
+    <section id="text-recent" class="text-recent hidden" aria-labelledby="text-recent-label">
+      <span class="eyebrow" id="text-recent-label">Recent texts</span>
+      <div class="text-rows" id="text-recent-rows"></div>
+    </section>
+    <div id="text-bar">
+      <textarea id="text-input" rows="1" placeholder="Text ⇄ phone (Enter sends)" aria-label="Message to send to your phone"></textarea>
+      <!-- Send is pinned to the END of the field, and nothing is ever inserted after
+           it: the inbound text used to be a sibling of this button, so a message
+           from the phone displaced Send by 350px (x1372 → x1022). -->
+      <button id="text-send" class="toolbtn" title="Send to phone" aria-label="Send to phone"><i class="ic ic-send"></i></button>
+      <!-- EVERY text, sent and received, in the dialog shell Settings already uses.
+           The newest one is already beside the field (#text-recent); this is the
+           whole conversation, and a row click copies it. It lives in the band
+           because it belongs to the field beside it — and it is the ONLY way in:
+           the button shipped with `.hidden` hard-coded and nothing ever removed it
+           (it measured display:none on a live page), so the dialog's one reachable
+           trigger was the strip's own "Every text…" link. -->
+      <button id="texts-btn" class="toolbtn icon-btn" title="Every text sent or received — click one to copy it" aria-label="Every text sent or received" aria-haspopup="dialog" aria-controls="texts-backdrop"><i class="ic ic-mail" aria-hidden="true"></i></button>
+    </div>
+  </div>
+  <!-- The rail is a column at 264px and a DRAWER below 900px. The trigger lives
+       in the band (and only renders below the breakpoint) because the rail is
+       out of flow there — otherwise the status card, the capacity meter and the
+       Recent list would simply not exist on a laptop-width window. -->
+  <button id="rail-toggle" class="toolbtn icon-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="rail" title="Status and recent arrivals" aria-label="Status and recent arrivals"><i class="ic ic-activity" aria-hidden="true"></i></button>
+</header>
+<div class="app">
+<main>
+  <div id="update-banner" class="hidden"><span id="update-banner-text" role="status">ProofPipe was updated on the server — refresh to get the new UI</span><button id="update-refresh" class="btn">Refresh now</button></div>
+  <div class="view">
+    <div class="card side" id="rail">
+      <div class="side-head">
+        <div class="pill"><span class="dot ok" id="conn-dot"></span><span id="conn-text">Live</span></div>
+        <button id="settings-btn" class="toolbtn settings-btn" title="Settings" aria-haspopup="dialog" aria-controls="settings-backdrop"><i class="ic ic-gear"></i></button>
+      </div>
+      <!-- The rail used to hold a pill, a QR that vanishes on pairing, three
+           lines of storage text and a legend you could not click — 45–56% of the
+           column was empty (measured: 331.8px of 742px at 1440×900, 511.8px of
+           922px at 1920×1080) and at 780px it overflowed a 40dvh cap into a
+           SECOND scroll region. It answers three questions now, in four cards:
+           is my phone connected · am I running out of room · did my file land. -->
+
+      <!-- 1 · STATUS — the pill says "Live"; this says what "Live" means. -->
+      <section class="rail-card" id="status-card" aria-labelledby="status-label">
+        <h3 class="eyebrow" id="status-label">Phone</h3>
+        <!-- mirrors the structure loadStats() builds, so the first update is a
+             content swap rather than a visible restyle -->
+        <div id="stats" aria-live="polite"><div>…</div></div>
+      </section>
+
+      <!-- 2 · PAIRING — the mechanism is unchanged (ONE QR on the page, shown
+           whenever no phone is reachable); only its heading joined the rail's
+           own card language. -->
+      <section class="rail-card" id="pair-card" aria-labelledby="pair-label">
+        <div class="pair-head">
+          <h3 class="eyebrow" id="pair-label">Pair phone</h3>
+          <button id="qr-toggle" class="linkbtn" aria-expanded="true" aria-controls="pair-body" title="Show or hide the pairing QR">Hide QR</button>
+        </div>
+        <div id="pair-body">
+          <img id="qr" src="/qr.png" alt="Pairing QR code — scan it with your phone">
+          <!-- starts hidden: the picker only earns its place when there is more
+               than one interface to choose between, and starting hidden avoids an
+               empty box flashing in on every load -->
+          <select id="nic-sel" class="pp-sel hidden" title="Network adapter the QR points at" aria-label="Network adapter the pairing QR points at"></select>
+          <a id="lan-url" class="muted mono" target="_blank" rel="noopener"></a>
+        </div>
+      </section>
+
+      <!-- 3 · CAPACITY — a bar and one sentence. "31.5 MB" answered nothing
+           without the cap beside it; three lines of text became one meter. -->
+      <section class="rail-card" id="cap-card" aria-labelledby="cap-label">
+        <h3 class="eyebrow" id="cap-label">Storage</h3>
+        <div class="meter" id="meter" role="progressbar" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="meter-fill"></i></div>
+        <div class="rail-sub" id="cap-text">Loading…</div>
+        <button type="button" id="manage-storage" class="linkbtn" title="Open settings to change the cap or cleanup rule">Manage…</button>
+      </section>
+
+      <!-- 4 · RECENT — the last three arrivals across both libraries, with
+           direction and time. This is the question the app exists to answer, and
+           it is what fills the column honestly. -->
+      <section class="rail-card" id="recent-card" aria-labelledby="recent-label">
+        <h3 class="eyebrow" id="recent-label">Recent</h3>
+        <ul class="rail-list" id="recent-list"></ul>
+        <div class="rail-sub" id="recent-empty">Nothing has arrived yet.</div>
+      </section>
+      <!-- The origin legend used to live here: two coloured icons and a word,
+           explaining a colour that is already on every tile — a key you could
+           not click, in the one column of the window with room to spare. It is
+           the toolbar's filter chips now (#origin-chips): same vocabulary, and
+           they do something. -->
+    </div>
+    <!-- `no-data` hides the DATA tools (sort, size, ＋File, ⋯, chips)
+         until there is data for them to act on. On a fresh install the toolbar
+         offered sort and Delete-all over a 996x661 void — every control present,
+         none of them able to do anything. The view switch and the compose field
+         stay: navigation and capture are what the first-run screen is FOR. -->
+    <div class="card main-card no-data">
+      <!-- the row's job: which view · which subset · in what order · at what size.
+           Everything occasional lives behind the ⋯ — 10 controls on THREE baselines
+           (31 / 23 / 22px) became 5 on one (32px), and the only inverted surface is
+           now the active view segment. -->
+      <div class="toolbar">
+        <div class="view-tabs" role="tablist" aria-label="Content view">
+          <button id="tab-captures" class="toolbtn tab-btn active" role="tab" aria-selected="true" aria-controls="captures">Captures <span id="cap-count" class="faint"></span></button>
+          <button id="tab-transfers" class="toolbtn tab-btn" role="tab" aria-selected="false" aria-controls="transfers">Transfers <span id="file-count" class="faint"></span></button>
+        </div>
+        <!-- origin filter, the middle third of the row. It narrows the list in
+             view, so it sits between "which view" and its tools, and it covers
+             BOTH lists: a capture filters by `origin`, a transfer row by `dir`,
+             and the vocabulary is the same for both — "From phone" means the
+             thing came from the phone either way. Text search used to sit beside
+             it and is gone (v1.20.0): these chips are the legend AS the control. -->
+        <div class="filters">
+          <div class="chips" id="origin-chips" role="group" aria-label="Filter by origin">
+            <button type="button" class="chip on" data-origin="all" aria-pressed="true">All</button>
+            <button type="button" class="chip" data-origin="phone" aria-pressed="false"><i class="ic ic-phone" aria-hidden="true"></i>From phone</button>
+            <button type="button" class="chip" data-origin="pc" aria-pressed="false"><i class="ic ic-pc" aria-hidden="true"></i>From this PC</button>
+          </div>
+        </div>
+        <div class="tools">
+          <!-- sort + density are icon MENUS: a menu's open state is a fill change,
+               which is what keeps the inverted-white language for the view switch
+               alone (DESIGN.md §7 — "a screen has exactly one of them") -->
+          <div class="mpop cap-only">
+            <button type="button" id="sort-btn" class="toolbtn icon-btn" aria-haspopup="true" aria-expanded="false" aria-controls="sort-menu" title="Sort order" aria-label="Sort order"><i class="ic ic-sort" aria-hidden="true"></i></button>
+            <div id="sort-menu" class="menu menu-right" role="group" aria-label="Sort order">
+              <button type="button" class="menu-item" id="sort-new" data-sort="new" aria-pressed="true">Newest first</button>
+              <button type="button" class="menu-item" id="sort-old" data-sort="old" aria-pressed="false">Oldest first</button>
+            </div>
+          </div>
+          <div class="mpop cap-only">
+            <button type="button" id="dens-btn" class="toolbtn icon-btn" aria-haspopup="true" aria-expanded="false" aria-controls="dens-menu" title="Thumbnail size" aria-label="Thumbnail size"><i class="ic ic-grid-2x2" aria-hidden="true" id="dens-btn-ic"></i></button>
+            <div id="dens-menu" class="menu menu-right" role="group" aria-label="Thumbnail size">
+              <button type="button" id="dens-s" class="menu-item" aria-pressed="false"><i class="ic ic-grid-3x3" aria-hidden="true"></i>Small</button>
+              <button type="button" id="dens-m" class="menu-item" aria-pressed="false"><i class="ic ic-grid-2x2" aria-hidden="true"></i>Medium</button>
+              <button type="button" id="dens-l" class="menu-item" aria-pressed="false"><i class="ic ic-square" aria-hidden="true"></i>Large</button>
+            </div>
+          </div>
+          <!-- a real button (tab-reachable): a <label> wrapping a hidden input was
+               mouse-only — labels are not focusable, so keyboard users could not
+               send a file. The input stays outside and is clicked programmatically. -->
+          <button type="button" class="toolbtn icon-btn file-add" id="file-add-btn" title="Send any file to your phone (PDF, ZIP, docs, video…)" aria-label="Send any file to your phone"><i class="ic ic-plus" aria-hidden="true"></i></button>
+          <!-- webcam scan: a PC-only capture SOURCE beside ＋File. It produces a
+               capture like any other (same /upload, same grid), so it is not a
+               manage tool and stays on the first-run screen — scanning a page is
+               how a laptop with no phone can add its first image. -->
+          <button type="button" class="toolbtn icon-btn" id="scan-btn" title="Scan a document with this PC's camera" aria-label="Scan a document with this PC's camera"><i class="ic ic-scan" aria-hidden="true"></i></button>
+          <input type="file" multiple hidden id="file-input">
+          <div class="mpop">
+            <button type="button" id="tools-btn" class="toolbtn icon-btn" aria-haspopup="true" aria-expanded="false" aria-controls="tools-menu" title="More tools" aria-label="More tools"><i class="ic ic-more" aria-hidden="true"></i></button>
+            <div id="tools-menu" class="menu menu-right" role="group" aria-label="More tools">
+              <!-- Select is the ONE bulk tool both tabs use (it reads ids from
+                   whichever list is on screen — see selectedKey()), so it is neither
+                   .cap-only nor .files-only: hiding it on Transfers is what made a
+                   file list un-bulk-selectable. -->
+              <button id="select-btn" class="menu-item" title="Toggle multi-select mode" aria-pressed="false">Select</button>
+              <label class="show-all-toggle" title="Show captures and transfers together">
+                <input type="checkbox" id="show-all">
+                <span>Show both lists</span>
+              </label>
+              <div class="menu-sep" aria-hidden="true"></div>
+              <button id="del-all-btn" class="menu-item danger cap-only" title="Delete every capture — cannot be undone" aria-label="Delete all captures — cannot be undone"><i class="ic ic-trash" aria-hidden="true"></i>Delete all captures</button>
+              <!-- the Transfers tab's own bulk action: it deletes FILES, so it is not
+                   .cap-only — it must be the one bulk control present on that tab,
+                   where the capture tools (including Delete all) are hidden. -->
+              <button id="del-all-files-btn" class="menu-item danger files-only hidden" title="Delete every transferred file — cannot be undone" aria-label="Delete all transferred files — cannot be undone"><i class="ic ic-trash" aria-hidden="true"></i>Delete all files</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Select mode used to offer three controls and exactly one outcome:
+           destroying things. The app's own one-line description is "phone photo
+           to PC, one tap — for pasting into AI chats", so the primary here is
+           Copy: one gesture writes every selected capture to the clipboard.
+           Delete is demoted to the right end, past a gap, where a destructive
+           action belongs. -->
+      <div id="bulk-bar" class="hidden">
+        <span id="bulk-count">0 selected</span>
+        <button id="bulk-copy" class="btn primary cap-only"><i class="ic ic-copy" aria-hidden="true"></i> <span id="bulk-copy-label">Copy</span></button>
+        <button id="bulk-all" class="btn ghost">Select all</button>
+        <button id="bulk-cancel" class="btn ghost">Cancel</button>
+        <button id="bulk-del" class="btn danger"><i class="ic ic-trash"></i> Delete</button>
+      </div>
+      <!-- FIRST RUN. The empty state used to be three lines of 12.5–16px grey
+           text centred in a 996x661 void, next to a full set of tools. This is
+           the screen that decides the impression, so it is a single setup card
+           with the three steps in order, and steps 2–3 stay at 45% until the
+           phone has actually connected (a progress affordance, not a checklist).
+           Step 1 deliberately renders NO second QR: the pairing code lives in
+           the rail, and a copy here is the exact bug
+           test/harness-ui.test.js ('there is exactly ONE pairing QR') pins. -->
+      <div id="setup" class="setup hidden">
+        <ol class="setup-steps">
+          <li class="setup-step" id="setup-1">
+            <span class="setup-n" aria-hidden="true">1</span>
+            <div class="setup-body">
+              <b>Scan the QR to pair your phone</b>
+              <span class="setup-sub">Same Wi-Fi. The code is in the panel on the left — it is 176px, big enough to scan from across the desk.</span>
+              <button type="button" id="setup-pair" class="btn">Show the pairing QR</button>
+            </div>
+          </li>
+          <li class="setup-step" id="setup-2">
+            <span class="setup-n" aria-hidden="true">2</span>
+            <div class="setup-body">
+              <b>Send a photo from your phone</b>
+              <span class="setup-sub">Or drop / paste an image anywhere on this page.</span>
+            </div>
+          </li>
+          <li class="setup-step" id="setup-3">
+            <span class="setup-n" aria-hidden="true">3</span>
+            <div class="setup-body">
+              <b>It lands here, ready to paste</b>
+              <span class="setup-sub">With auto-copy on, <kbd>Ctrl</kbd>+<kbd>V</kbd> puts it straight into your chat.</span>
+            </div>
+          </li>
+        </ol>
+      </div>
+      <div id="empty" class="empty hidden">
+        <div class="empty-title">No captures yet.</div>
+        <!-- no QR here: the pairing card on the left already shows it, and that
+             panel is the one with the interface picker and the LAN URL. The copy
+             is kept in step with the QR's visibility by updateQr(). -->
+        <div class="empty-sub" id="empty-sub">Scan the pairing QR on the left with your phone, or drop / paste an image here.</div>
+        <div class="empty-hint">Drag an image anywhere on this page to add it instantly.</div>
+      </div>
+      <!-- a load FAILURE is not an empty library: showing "No captures yet."
+           (a claim about the data) when the server simply didn't answer was a
+           lie the user had no way to correct. Separate state, separate copy. -->
+      <!-- a FILTER that matches nothing is not an empty library either. Same
+           distinction as the load-failure state below: "No captures yet." is a
+           claim about the data, and a filter that found nothing has not made the
+           data go away. -->
+      <div id="empty-filtered" class="empty hidden">
+        <div class="empty-title">Nothing matches.</div>
+        <div class="empty-sub" id="empty-filtered-sub"></div>
+        <button id="filter-clear" class="btn">Show all captures</button>
+      </div>
+      <div id="empty-error" class="empty hidden">
+        <div class="empty-title">Couldn't load your captures.</div>
+        <div class="empty-sub">The server didn't answer. It keeps retrying on its own — or try again now.</div>
+        <button id="empty-retry" class="btn">Retry now</button>
+      </div>
+      <div id="transfers-fallback" class="empty hidden">
+        <div class="empty-title">Server updating — file transfer coming</div>
+        <div class="empty-sub">The backend doesn't have the file-transfer endpoints yet. Everything else keeps working.</div>
+      </div>
+      <div id="transfers-uploads" class="hidden"></div>
+      <div id="transfers" class="transfer-list hidden" role="tabpanel" aria-labelledby="tab-transfers"></div>
+      <!-- skeleton rows while the first page is in flight: without them the tab
+           flashed "No transfers yet." before the list arrived. role=status so the
+           wait is announced (it used to sit inside aria-hidden) -->
+      <div id="transfers-loading" class="hidden" role="status" aria-live="polite"></div>
+      <!-- a load FAILURE is not an empty lane: with no retry the tab sat on an
+           invisible "Loading transfers…" forever -->
+      <div id="transfers-error" class="empty hidden">
+        <div class="empty-title">Couldn't load transfers.</div>
+        <div class="empty-sub">The server didn't answer. Try again now, or send a file from your phone.</div>
+        <button id="transfers-retry" class="btn">Retry</button>
+      </div>
+      <button id="files-load-more" class="toolbtn load-more hidden">Load older transfers</button>
+      <div id="transfers-empty" class="empty hidden">
+        <div class="empty-title">No transfers yet.</div>
+        <div class="empty-sub" id="transfers-empty-sub">Send a file from your phone, or click “＋ File” / drop any file here.</div>
+      </div>
+      <div id="captures" class="capture-grid" role="tabpanel" aria-labelledby="tab-captures"></div>
+      <button id="load-more" class="toolbtn load-more">Load older captures</button>
+    </div>
+  </div>
+</main>
+</div>
+
+<div id="drop-overlay"><div class="drop-box"><i class="ic ic-upload" aria-hidden="true"></i><span>Drop to add to ProofPipe</span></div></div>
+<!-- positioning only. The live region is the persistent #toast-announcer (a
+     region created WITH its content already inside it is often never
+     announced), and the interactive Undo control must not sit inside a live
+     region either — see DESIGN.md §7. -->
+<div id="toasts"></div>
+<div id="toast-announcer" class="sr-only" role="status" aria-live="polite"></div>
+<!-- only ever rendered below 900px, where the rail is a drawer rather than a
+     column: the veil is what makes it a modal surface with ONE scroll region
+     (the drawer), instead of a 40dvh-capped inner scroller sitting beside the
+     library's own. Above the breakpoint it is display:none and the rail is a
+     plain grid column again. -->
+<div id="rail-backdrop" class="hidden"></div>
+
+  <div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Capture viewer">
+    <button id="lb-close" title="Close (Esc)" aria-label="Close"><i class="ic ic-x"></i></button>
+    <button id="lb-prev" title="Previous (←)" aria-label="Previous"><i class="ic ic-chev-l"></i></button>
+    <div id="lb-stage"><img id="lb-thumb" alt="" aria-hidden="true" draggable="false" decoding="async"><img id="lb-img" alt="Capture preview" draggable="false" decoding="async" fetchpriority="high"></div>
+    <button id="lb-next" title="Next (→)" aria-label="Next"><i class="ic ic-chev-r"></i></button>
+    <!-- Glyph-only. "Copy", "Download", "Rotate" and "Delete" were four words
+         on a bar whose icons already said all of it — and the words are what made
+         the position and the hint fight them for room. aria-label carries the
+         name, title carries the key. -->
+    <div id="lb-bar">
+      <button id="lb-copy" class="lb-act" title="Copy (C)" aria-label="Copy image"><i class="ic ic-copy" aria-hidden="true"></i></button>
+      <a id="lb-dl" class="lb-act" download title="Download" aria-label="Download image"><i class="ic ic-download" aria-hidden="true"></i></a>
+      <button id="lb-rot" class="lb-act" title="Rotate (R)" aria-label="Rotate image"><i class="ic ic-rotate" aria-hidden="true"></i></button>
+      <!-- the position is the ONE value that changes while the viewer moves, so it
+           sits centred where the eye already is, between the actions and the
+           destructive one. aria-hidden: #lb-caption below is the live region, and
+           two polite regions announcing the same move is a stutter. -->
+      <span id="lb-pos" aria-hidden="true"></span>
+      <button id="lb-del" class="lb-act danger" title="Delete (Del)" aria-label="Delete capture"><i class="ic ic-trash" aria-hidden="true"></i></button>
+    </div>
+    <!-- The caption is CONTEXT, not chrome: a chip that fades 2s after the last
+         move. It is still the ONLY thing that changes while the viewer moves
+         through the library (direction · time), and the phone announces the same
+         fact (#viewer-pos is a live region) — without this the PC's
+         arrow-through-the-viewer was completely silent to assistive tech. -->
+    <div id="lb-meta">
+      <span id="lb-caption" role="status" aria-live="polite"></span>
+      <span id="lb-coach" class="hidden">scroll or F to zoom · drag to pan · double-click to reset</span>
+    </div>
+  </div>
+
+<div id="dir-backdrop" class="hidden" role="dialog" aria-modal="true" aria-label="Choose storage folder">
+  <div class="dir-box">
+    <div class="dir-title">Save captures and files in</div>
+    <div class="dir-current">Current: <span id="dir-current" class="mono"></span></div>
+    <input id="dir-manual" class="dir-manual mono" spellcheck="false" autocomplete="off">
+    <div class="dir-hint faint">Paste an absolute path, e.g. D:\Photos\ProofPipe — in Explorer, Alt+D copies the address bar.</div>
+    <div class="dir-err hidden" id="dir-err" role="alert"></div>
+    <div class="dir-actions">
+      <button id="dir-browse" class="btn ghost" title="Open the Windows folder picker on this PC">Browse…</button>
+      <button id="dir-cancel" class="btn ghost">Cancel</button>
+      <button id="dir-use" class="btn">Use this folder</button>
+    </div>
+  </div>
+</div>
+<!-- The whole conversation, in the SAME shell as Settings (one backdrop, one box,
+     one focus trap): every text either direction, newest first, each row a button
+     that copies. The three most recent are already on screen in #text-recent —
+     this is the list you scroll when the one you want is older than that. -->
+<div id="texts-backdrop" class="hidden" role="dialog" aria-modal="true" aria-label="Every text">
+  <div class="settings-box">
+    <div class="settings-head">
+      <span class="settings-title">Every text</span>
+      <button id="texts-close" class="toolbtn" title="Close (Esc)" aria-label="Close every text"><i class="ic ic-x"></i></button>
+    </div>
+    <div class="texts-hint faint">Newest first, both directions. Click a row to copy it.</div>
+    <div class="texts-list" id="texts-list"></div>
+    <div class="texts-empty faint hidden" id="texts-empty">Nothing yet — send the first message from the field above.</div>
+  </div>
+</div>
+<div id="settings-backdrop" class="hidden" role="dialog" aria-modal="true" aria-label="Settings">
+  <div class="settings-box">
+    <div class="settings-head">
+      <span class="settings-title">Settings</span>
+      <button id="settings-close" class="toolbtn" title="Close (Esc)" aria-label="Close settings"><i class="ic ic-x"></i></button>
+    </div>
+    <!-- Three NAMED groups plus a dashed Danger zone. One flat list of eight rows
+         gave "copy new captures" and "back up everything" the same weight, left
+         every switch on the left and every select on the right, and put the two
+         wipes among the settings as if deleting all your data were one of them.
+         The row anatomy is one grid: label column left, control column RIGHT, so
+         the eye reads down a single edge (see .settings-rows in style.css). -->
+    <div class="settings-list">
+      <section class="settings-group">
+        <h3 class="settings-group-h">Capture</h3>
+        <div class="settings-rows">
+      <label class="auto-copy-toggle" title="Every new capture from your phone is copied to the clipboard so you can instantly Ctrl+V it into Claude or ChatGPT">
+        <span>Automatically copy new capture to clipboard</span>
+        <input type="checkbox" id="auto-copy">
+      </label>
+      <label class="auto-copy-toggle" title="New photos from your phone are pasted straight into the last-used chat tab on this PC. Same toggle as the phone's Auto-paste button.">
+        <span>Paste new phone photos into chat (auto-paste)</span>
+        <input type="checkbox" id="auto-paste-pc">
+      </label>
+      <div class="quality-setting">
+        <label class="auto-copy-toggle" title="Photos from the phone are compressed before upload to save data and transfer faster. Synced with the phone's toggle. Off by default.">
+          <span>Reduce transfer quality <span class="faint" id="quality-level-cap"></span></span>
+          <input type="checkbox" id="quality-reduce">
+        </label>
+        <div id="quality-row" class="hidden">
+          <input type="range" id="quality-pc-level" min="1" max="100" step="1" value="80"
+                 aria-label="JPEG quality level" title="100 = best quality, 1 = smallest">
+          <span class="quality-val"><span id="quality-pc-val">80</span>%</span>
+        </div>
+      </div>
+        </div>
+      </section>
+
+      <section class="settings-group">
+        <h3 class="settings-group-h">Storage</h3>
+        <div class="settings-rows">
+      <label class="auto-copy-toggle" title="When storage passes 80% of the cap, the oldest captures are deleted automatically. Synced with the phone's toggle.">
+        <span>Auto-cleanup at 80% storage <span class="faint" id="cleanup-cap"></span></span>
+        <input type="checkbox" id="auto-cleanup">
+      </label>
+      <div id="cap-row" class="nested-setting hidden">
+        <label class="muted" for="cap-sel">Storage cap</label>
+        <select id="cap-sel" class="pp-sel" title="Oldest captures drop past 80% of this cap">
+          <option value="250">250 MB</option>
+          <option value="500">500 MB</option>
+          <option value="1000">1 GB</option>
+          <option value="2000">2 GB</option>
+          <option value="5000">5 GB</option>
+          <option value="0">Server default</option>
+        </select>
+      </div>
+      <div id="retention-row" class="nested-setting">
+        <label class="muted" for="retention-sel">Keep captures</label>
+        <select id="retention-sel" class="pp-sel" title="Captures older than this are deleted automatically (0 = keep forever)">
+          <option value="0">Forever</option>
+          <option value="7">7 days</option>
+          <option value="30">30 days</option>
+          <option value="90">90 days</option>
+          <option value="365">1 year</option>
+        </select>
+      </div>
+      <div class="hint storage-row" id="media-dir-row">
+        <span class="storage-path mono" id="media-dir-path" title="">…</span>
+        <button id="media-dir-change" class="mini-btn" title="Choose where captures and files are saved on this PC">Change…</button>
+      </div>
+      <div class="hint storage-row" id="backup-row">
+        <span class="storage-path faint" title="Zip the database, settings and every capture/file/inbox item into one archive">Backup (export) everything to a zip</span>
+        <button id="backup-btn" class="mini-btn" title="Pick a folder — a timestamped zip with the DB, settings and all media is written there">Backup now</button>
+      </div>
+        </div>
+      </section>
+
+      <section class="settings-group">
+        <h3 class="settings-group-h">Devices &amp; app</h3>
+        <div class="settings-rows">
+      <label class="auto-copy-toggle" title="Files sent from your phone are automatically saved to the PC inbox folder (data/inbox). Synced with the phone.">
+        <span>Auto-save phone files to inbox</span>
+        <input type="checkbox" id="auto-inbox">
+      </label>
+      <div class="hint storage-row" id="inbox-dir-row">
+        <span class="storage-path faint" id="inbox-dir-path" title="Where phone files land when auto-save is on">Inbox: default (data/inbox)</span>
+        <button id="inbox-dir-change" class="mini-btn" title="Pick a folder — phone files auto-save there instead of data/inbox">Change…</button>
+      </div>
+      <div class="nested-setting" id="browser-row">
+        <label class="muted" for="browser-sel" title="Which browser the launcher opens — applies the next time you start ProofPipe.bat">Open harness in</label>
+        <select id="browser-sel" class="pp-sel" title="Which browser opens when you start ProofPipe.bat (Default = your system's default browser)">
+          <option value="default">Default browser</option>
+        </select>
+      </div>
+      <details class="hint kb-hint">
+        <summary>Keyboard shortcuts</summary>
+        ↑↓←→ or J/K move · Enter or Space open<br>C copy · P send to phone · D download · X delete<br>1 2 3 view · S select · click a tile's box to multi-select<br>⌘A select all · ⌘C copy selection · ⌘⇧S save selection<br>F fit ↔ actual size in the viewer · Ctrl+Z undo a delete
+      </details>
+        </div>
+      </section>
+
+      <!-- NO "Danger zone" group here, deliberately. The review's §8 wireframe
+           draws one, but its own §4 places the two wipes in the toolbar's ⋯ — and
+           a destructive action belongs beside the list it destroys, not two
+           navigations away behind a gear. The pattern §8 asks for (destructive
+           actions get their OWN list rather than a red label among the ordinary
+           ones) is what the ⋯'s separator group already is, and
+           DESIGN.md §7 records it there. Settings has no destructive setting. -->
+    </div>
+  </div>
+</div>
+<!-- PC webcam scanner. A MODAL task (it takes the camera and the whole screen),
+     so it rides the settings shell — same backdrop fade, same focus trap — but
+     its box is landscape: the viewfinder IS the content. Shutters and arrows are
+     the phone's, but the cockpit here is the desk: grab the four corners, fix the
+     crop, and the page lands on the PC ready to Ctrl+V. Behaviour lives in
+     scan.js; this file only owns the shape. -->
+<div id="scan-backdrop" class="hidden" role="dialog" aria-modal="true" aria-label="Scan a document with this camera">
+  <div class="scan-box">
+    <div class="settings-head">
+      <span class="settings-title">Scan</span>
+      <button id="scan-close" class="toolbtn" title="Close (Esc)" aria-label="Close scanner"><i class="ic ic-x"></i></button>
+    </div>
+    <div id="scan-stage" class="scan-stage">
+      <!-- muted + playsinline: the viewfinder must never play the mic or pop the
+           iOS full-screen player (the phone's capture has the same two) -->
+      <video id="scan-video" playsinline muted autoplay aria-label="Camera viewfinder"></video>
+      <canvas id="scan-overlay" class="scan-overlay"></canvas>
+      <select id="scan-device" class="pp-sel scan-device hidden" title="Which camera to use" aria-label="Which camera to use"></select>
+      <div id="scan-status" class="scan-status hidden" role="status" aria-live="polite"></div>
+    </div>
+    <!-- the deskewed result, shown beside the source once a frame is held: the
+         corners are corrected ON the frozen frame (above), and this is the page
+         you will actually get -->
+    <div id="scan-review" class="scan-review hidden">
+      <canvas id="scan-preview" class="scan-preview" aria-label="Cropped result preview"></canvas>
+    </div>
+    <div class="scan-actions">
+      <span id="scan-hint" class="scan-hint faint"></span>
+      <div class="scan-buttons">
+        <button id="scan-retake" class="btn ghost hidden">Retake</button>
+        <button id="scan-shutter" class="btn primary" title="Capture this frame">Scan</button>
+        <button id="scan-send" class="btn primary hidden">Save scan</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="confirm-backdrop" class="hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-msg">
+  <div class="confirm-box">
+    <p id="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button id="confirm-no" class="btn ghost">Cancel</button>
+      <button id="confirm-yes" class="btn danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script src="/toPng.js"></script>
+<script src="/scan.js?v=__ASSET_SCAN__"></script>
+<script src="/app.js?v=__ASSET_APP__"></script>
+</body>
+</html>

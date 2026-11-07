@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  schedule:
+    # weekly production-dep audit report (non-blocking job below)
+    - cron: '0 6 * * 1'
+
+jobs:
+  test:
+    runs-on: windows-latest # better-sqlite3 prebuilds + Windows-flake regression coverage (see PITFALLS.md)
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      # production deps only (eslint is a devDep, not shipped to users). Now a
+      # real gate: green CI means the shipped dependency tree has no known CVEs.
+      - run: npm audit --omit=dev
+      # suites spawn servers on randomized ports; serialize so parallel jobs
+      # can't collide on the shared loopback probe ranges
+      - run: npm test
+        env:
+          CI: true
+
+  test-linux:
+    # canary for the cross-platform paths the Windows job never exercises:
+    # PP_DATA handling, the PID lockfile, and the EXDEV branch of media-dir
+    # relocation. Windows-only FEATURES (folder picker, backup zip) are
+    # skipped by their own tests here, so the suite stays green.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # lint on Linux too: the Windows-only job already covers it, but a
+      # platform-specific config/glob mistake would only show up here
+      - run: npm run lint
+      - run: npm test
+        env:
+          CI: true
+
+  audit:
+    # scheduled visibility only — a new upstream CVE must not break the build,
+    # but the workflow run itself is the signal to watch.
+    continue-on-error: true
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit --omit=dev

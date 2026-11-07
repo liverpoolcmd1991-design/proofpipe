@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#0e0f10">
+<meta name="color-scheme" content="dark">
+<title>ProofPipe Capture</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/phone.css?v=__PP_VERSION__">
+</head>
+<body>
+<div class="wrap">
+  <!-- header: a state-tinted status strip. The wordmark is gone — the user
+       launched this from an app icon, so the top of the screen belongs to the
+       one fact that decides whether a photo lands: the connection. The tint
+       makes a state change legible peripherally; an 8px dot never could. -->
+  <div class="capture-bar">
+    <div class="status-strip" id="status-strip" data-state="warn">
+      <span class="dot" id="status-dot"></span>
+      <span class="ss-main" id="status" role="status">connecting…</span>
+      <span class="ss-sub" id="status-sub"></span>
+      <div class="more-wrap">
+        <button id="more-btn" aria-expanded="false" aria-controls="more-menu" aria-label="More options"><i class="ic ic-more"></i></button>
+        <div id="more-menu" role="group" aria-label="More options">
+          <!-- sorting: a segmented control, not a <select> — the sheet is a
+               touch surface and an OS picker on top of it would be a second
+               modal. Applies to the Recent grid AND both strips. -->
+          <div class="menu-head">Sort</div>
+          <div class="sort-seg" role="group" aria-label="Sort order">
+            <button type="button" class="sort-opt" data-sort="new" aria-pressed="true">Newest</button>
+            <button type="button" class="sort-opt" data-sort="old" aria-pressed="false">Oldest</button>
+            <button type="button" class="sort-opt" data-sort="name" aria-pressed="false">Name</button>
+          </div>
+          <div class="menu-sep"></div>
+          <div class="menu-head">Sync</div>
+          <button class="switch-row" id="autocleanup" role="switch" aria-checked="false"
+                  title="When storage passes 80% of the cap, the oldest captures are deleted automatically">
+            <span class="switch-text">Auto-cleanup
+              <small id="autocleanup-sub">drops oldest captures past 80% of the storage cap</small></span>
+            <span class="switch" aria-hidden="true"></span>
+          </button>
+          <div class="quality-block">
+            <button class="switch-row" id="quality-toggle" role="switch" aria-checked="false"
+                    title="Reduce photo quality during transfer to save data and upload faster">
+              <span class="switch-text">Reduce transfer quality
+                <small>compress photos before upload (off = full quality)</small></span>
+              <span class="switch" aria-hidden="true"></span>
+            </button>
+            <div id="quality-level-row" class="hidden">
+              <input type="range" id="quality-level" min="1" max="100" step="1" value="80"
+                     aria-label="JPEG quality level" title="100 = best quality, 1 = smallest">
+              <span class="quality-val"><span id="quality-level-val">80</span>%</span>
+            </div>
+          </div>
+          <!-- auto-paste used to hold half of a permanent row to show one bit of
+               state. It is a setting, so it lives here — and its STATE is
+               mirrored into the status strip, where it stays visible without
+               costing a row. -->
+          <button class="switch-row" id="autopaste" role="switch" aria-checked="false"
+                  title="Auto-paste into chat: new photos are pasted straight into the chat tab you last used on the PC">
+            <span class="switch-text"><i class="ic ic-send"></i>Auto-paste
+              <small>new photos land in the chat tab you last used on the PC</small></span>
+            <span class="switch" aria-hidden="true"></span>
+          </button>
+          <!-- remote action with no receipt on this device — it belongs with the
+               rare actions, not in a permanent row -->
+          <button class="alt-btn ghost" id="open-latest"><span class="btn-face"><i class="ic ic-monitor"></i>Open latest on PC</span></button>
+          <div class="menu-sep"></div>
+          <div class="menu-head">Clean up — these delete data</div>
+          <div class="menu-group">
+            <button class="alt-btn ghost danger" id="clear-recent"><span class="btn-face"><i class="ic ic-x"></i>Clear recent captures</span></button>
+            <button class="alt-btn ghost danger" id="clear-pc"><span class="btn-face"><i class="ic ic-x"></i>Clear PC-sent captures</span></button>
+            <button class="alt-btn ghost danger hidden" id="clear-outbox"><span class="btn-face"><i class="ic ic-x"></i>Clear queued photos</span></button>
+          </div>
+          <button class="alt-btn ghost danger" id="del-all"><span class="btn-face"><i class="ic ic-trash"></i>Delete all captures on PC</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- the gallery leads: "did it land?" is the question this screen answers, and
+       the primary action is under the thumb at the bottom instead -->
+  <div class="recent-heading"><span class="eyebrow">Recent captures</span><span id="recent-count" class="muted tnum" role="status" aria-live="polite"></span></div>
+  <div class="gallery">
+    <!-- skeleton placeholders while the first load is in flight: without them the
+         grid area is blank and then jumps when the tiles land -->
+    <div id="recent-loading" class="hidden" aria-hidden="true"></div>
+    <!-- group, not list: the tiles are role=button (a list would need listitem children) -->
+    <div id="recent" role="group" aria-label="Recent captures"></div>
+    <div id="recent-empty" class="muted empty-recent">Nothing here yet — the <b>Capture</b> button below sends your first photo.</div>
+    <div id="recent-error" class="muted empty-recent hidden" role="alert">
+      Couldn't load recent captures. The server may be offline.
+      <button id="recent-retry" class="linkbtn" type="button">Retry now</button>
+    </div>
+  </div>
+
+  <!-- the composer sits ABOVE the PC-sent lane: sending is the primary text
+       action, and it used to be buried between the two received-content lanes -->
+  <div class="text-row">
+    <div class="text-box">
+      <textarea id="text-input" rows="1" placeholder="send text to PC…" autocomplete="off"
+                aria-label="Text to send to PC" enterkeyhint="send"></textarea>
+      <button id="text-expand" aria-label="Expand text editor" aria-expanded="false"><i class="ic ic-chev-up"></i></button>
+    </div>
+    <button id="text-send" class="alt-btn send" title="Send to PC" aria-label="Send text to PC"><i class="ic ic-send"></i></button>
+  </div>
+  <div id="text-queued" class="muted hidden" aria-live="polite"></div>
+  <div id="file-queued" class="muted hidden" aria-live="polite"></div>
+
+  <!-- ONE unified "from your PC" lane: texts/captures the PC sent sit above the
+       transferred files. It replaces two lanes that each reserved a 78px slot
+       while empty, so nothing is blank when the PC hasn't sent anything.
+       Each strip is followed by its own "more rows" control (the same
+       .lane-more row in both cases), then the lane's single gesture tip. -->
+  <div id="inbox" class="inbox hidden">
+    <div id="text-in" class="text-in hidden"></div>
+    <button id="text-load-more" class="linkbtn lane-more hidden" type="button">Show older texts</button>
+    <div id="files" class="hidden"></div>
+    <button id="files-load-more" class="linkbtn lane-more hidden" type="button">Load older transfers</button>
+    <!-- ONE tip for ONE gesture. Both lanes swipe down to remove, and both hints
+         were gated by the SAME flag and dismissed together — so whenever the lane
+         had texts and files at once it printed the same sentence twice, one line
+         apart, and the two lines read as a divider between two groups instead of
+         one lane. Driven by updateInbox(), which already watches both. -->
+    <div id="chip-hint" class="muted hidden">tip: swipe a chip down to remove it</div>
+  </div>
+  <!-- The VISUAL progress lives in the status strip's detail line (see
+       renderTransferStatus in phone.js) — a send used to own a whole band of
+       .up-row cards here, and the keyboard hid that band outright. This node
+       stays in the DOM as the accessible copy of the same fact: off-screen, a
+       polite live region, so screen readers still hear "photo.jpg 72%". -->
+  <div id="file-progress" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- secondary actions: ONE row of two. The sheet's only entry point is the ⋮
+       in the status strip — a labelled "More" cell here was a second door to the
+       same room, so the row gives its space back to the two pickers instead. -->
+  <div class="secondary-row">
+    <label class="alt-btn sec" role="button" tabindex="0">
+      <input type="file" accept="image/*" multiple hidden id="gallery">
+      <span class="btn-face"><i class="ic ic-images"></i>Choose photos</span>
+    </label>
+    <label class="alt-btn sec" id="file-btn-label" role="button" tabindex="0">
+      <input type="file" multiple hidden id="file-input">
+      <span class="btn-face"><i class="ic ic-file"></i>Send file</span>
+    </label>
+  </div>
+
+  <!-- the bottom bar: the queue affordance sits where the thumb already is, and
+       the shutter is the ONE white surface on the screen -->
+  <div class="shutter-bar">
+    <div id="outbox-info" class="muted hidden" role="button" tabindex="0" title="Tap to retry sending these now"><span id="outbox-text" aria-live="polite"></span></div>
+    <label class="shutter" id="shutter" role="button" tabindex="0">
+      <input type="file" accept="image/*" capture="environment" multiple hidden id="cam">
+      <span><i class="ic ic-camera"></i>&nbsp; Capture</span>
+    </label>
+  </div>
+</div>
+
+<div id="viewer" class="hidden" role="dialog" aria-modal="true" aria-label="Capture viewer">
+    <button id="viewer-close" title="Close (Esc)" aria-label="Close capture viewer"><i class="ic ic-x"></i></button>
+    <div id="viewer-hint" class="hidden" aria-hidden="true">swipe for next capture</div>
+    <div id="viewer-stage"><img id="viewer-under" alt="" aria-hidden="true" draggable="false" decoding="async"><img id="viewer-img" alt="Capture preview" draggable="false" decoding="async"></div>
+    <div id="viewer-bar">
+      <button id="viewer-retry" class="vbtn hidden"><i class="ic ic-retry"></i>&nbsp;Retry send</button>
+    <button id="viewer-discard" class="vbtn hidden"><i class="ic ic-x"></i>&nbsp;Discard</button>
+    <!-- rotate lives here too: a sideways photo had to be sent to the PC to be
+         straightened, on the device that actually took it -->
+    <button id="viewer-rot" class="vbtn"><i class="ic ic-rotate"></i>&nbsp;Rotate</button>
+    <button id="viewer-dl" class="vbtn"><i class="ic ic-download"></i>&nbsp;Download</button>
+    <button id="viewer-del" class="vbtn del hidden"><i class="ic ic-trash"></i>&nbsp;Delete</button>
+    <span id="viewer-origin" class="chip-badge pc hidden" title="Sent from your PC"><i class="ic ic-pc" aria-hidden="true"></i>PC</span>
+    <span id="viewer-pos" aria-live="polite"></span>
+  </div>
+</div>
+<div id="file-sheet" class="hidden" role="dialog" aria-modal="true" aria-label="File actions">
+  <div id="file-sheet-box">
+    <!-- INSIDE the box: it positions against #file-sheet-box, not the fixed
+         overlay — outside, the ✕ rendered in the screen corner, far from the
+         dialog it closes -->
+    <button id="file-sheet-close" title="Close (Esc)" aria-label="Close file actions"><i class="ic ic-x"></i></button>
+    <div class="fsh-name" id="file-sheet-name"></div>
+    <div class="fsh-sub" id="file-sheet-sub"></div>
+    <div class="fsh-actions">
+      <button id="file-sheet-save" class="vbtn"><i class="ic ic-download"></i>&nbsp;Save</button>
+      <button id="file-sheet-open" class="vbtn"><i class="ic ic-monitor"></i>&nbsp;Open</button>
+    </div>
+  </div>
+</div>
+<div id="confirm" class="hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">
+  <div id="confirm-box">
+    <div id="confirm-title" class="ct-title"></div>
+    <div id="confirm-body" class="ct-body hidden"></div>
+    <div class="ct-actions">
+      <button id="confirm-cancel" class="cbtn" type="button">Cancel</button>
+      <button id="confirm-ok" class="cbtn danger" type="button">Delete</button>
+    </div>
+  </div>
+</div>
+<!-- the live region is the message span, NOT the pill: the pill contains the
+     interactive Undo button, and a control inside a status region is not
+     announced (same fix as #toasts on the harness) -->
+<div id="undo-toast" class="hidden">
+  <span id="undo-toast-msg" role="status" aria-live="polite"></span>
+  <button id="undo-toast-btn" type="button">Undo</button>
+  <i class="undo-bar" aria-hidden="true"></i>
+</div>
+<script src="/toPng.js"></script>
+<script src="/queue.js"></script>
+<script src="/phone.js?v=__PP_VERSION__"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+node_modules/
+/data/
+test.jpg
+*.log
+
+# PowerShell ModuleAnalysisCache Windows drops in the repo root
+Microsoft/
+
+# local AI-agent tooling
+.agents/*
+!.agents/skills/
+!.agents/skills/**
+.freebuff/
+.claude/
+.hermes/
+.pi/
+.zcode/
+.workbuddy-ai/
+skills-lock.json
+
+# local-only items (never push)
+delegation/
+ProofPipe.rar
+*.rar
+
+# probe screenshots — the dev/*.mjs harnesses render a real page and write a shot
+# to measure it; the measurement is local, the code is what gets committed
+dev/*.png
+
+# backup artifacts (a misconfigured destination must never end up committed)
+proofpipe-backup-*.zip

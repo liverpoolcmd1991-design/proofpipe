@@ -2,15 +2,18 @@
 
 All notable changes to ProofPipe are documented in this file.
 
-## [1.23.0] — 2026-11-07
+## [1.23.0] — 2026-11-08
 
 ### Added
-- **Streamlined What's New Web Page**: Replaced the legacy desktop workbench at `/` with a focused release history page detailing what each ProofPipe version adds, with interactive component filters (`Server & Storage`, `Phone PWA`, `Chrome Extension`) and instant search.
-- **Explicit Media Kind on Text Shares**: Added explicit `kind: "media"` classification in `POST /api/text` alongside URL fallback detection so PC-shared captures are unambiguously typed in the `texts` table.
+- **PC Destructive Action Safety & Undo (`public/index.html`, `public/app.js`)**: Added a Liquid Glass confirmation dialog (`#pc-confirm-backdrop`) for bulk destructive actions (`Clear All`, `Clear Files`, `Remove Selected`, `Clear History`) and a 5-second Undo snackbar (`#pc-undo-toast`) for single-item photo, file, and message deletions.
+- **Two-Way Photo Sync & Sectioned Phone Inbox (`public/phone.js`, `public/phone.html`)**: PC-origin captures now appear automatically in the phone's gallery with a `PC` badge (`#recent .ok-badge.pc-origin`), and the phone's PC inbox lane includes a clear `From your PC` section header.
+- **Live PC Upload Progress (`#pc-transfer-pill`) & Full-Window Drop Overlay (`#drop-hint`)**: Replaced bare `fetch` uploads on the PC workbench with `XMLHttpRequest` upload progress tracking (`xhr.upload.onprogress`) and upgraded drag-and-drop to a non-layout-shifting full-window glass overlay with `dragDepth` tracking.
+- **Hover Photo Actions, Copyable Pairing Link & Structured Message Rows**: Replaced cramped 4-button photo card footers with floating glass hover actions + primary `Copy` footer, added a one-click copyable phone URL pill under the pairing QR code, and added directional `Phone`/`PC` origin badges, timestamps, and `Open ↗` URL links to the Messages & Clipboard dock.
+- **Liquid Glass Chrome Extension Popup (`extension/popup.html`)**: Overhauled the extension popup to the deep-space Liquid Glass palette with segmented pill tabs and a collapsible `Connection & site options` drawer.
 
 ### Changed
-- **Per-Route Multipart Body Limits**: Reduced the default Fastify `bodyLimit` from 21 MB to 1 MB globally while scoping the 21 MB limit strictly to `/upload` and `/share`.
-- **Documentation Overhaul**: Replaced legacy UI/pixel-measurement documentation with concise architectural, API, convention, and release docs.
+- **Unified Auto-Save in System Settings**: Storage ceiling and retention inputs now auto-save with debounced feedback (`#settings-save-state`) alongside toggle switches and custom popover selects.
+- **Per-Route Multipart Body Limits & Pre-Compiled SQL**: Scoped the 21 MB multipart body limit strictly to `/upload` and `/share`, added explicit `kind: "media"` classification in `POST /api/text`, and pre-compiled all hot-path SQLite statements.
 
 ---
 

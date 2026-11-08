@@ -58,6 +58,12 @@ test('desktop workbench: shell carries required stamps, Messages & Clipboard doc
   assert.match(cssNoComments, /#text-input\s*\{[^}]*overflow:\s*hidden/);
   assert.match(cssNoComments, /\.glass-select-menu\s*\{/);
   assert.match(workbenchJs, /new EventSource\('\/events'\)/);
+  assert.ok(d.querySelector('#pc-confirm-backdrop'), 'PC workbench includes destructive confirmation modal');
+  assert.ok(d.querySelector('#pc-undo-toast'), 'PC workbench includes single-item undo snackbar');
+  assert.ok(d.querySelector('#pc-transfer-pill'), 'PC workbench includes live transfer progress pill');
+  assert.ok(d.querySelector('#copy-phone-url'), 'PC workbench includes copyable companion URL button');
+  assert.equal(d.querySelector('#recent-card'), null, 'redundant sidebar recent-activity card is retired');
+  assert.match(workbenchJs, /function uploadWithProgress\(/, 'PC uploads report live XHR byte progress');
 });
 
 test('whats-new modal window & Liquid Glass popover menus: open, filter/select, and close cleanly', { skip: skipOpt }, () => {

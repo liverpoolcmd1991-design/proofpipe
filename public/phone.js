@@ -638,6 +638,7 @@ function addRemoteRecent(cap, { live = false } = {}) {
       existing.fromPc = cap.origin === 'pc';
       recentTileA11y(existing.el, existing, cap.created_at); // keep the label's origin honest
     }
+    existing.el.classList.toggle('pc-origin', existing.fromPc);
     existing.el.classList.remove('pending', 'failed');
     setTileState(existing.el, '');
     existing.el.title = 'Uploaded to your PC — tap to view';
@@ -660,7 +661,7 @@ function addRemoteRecent(cap, { live = false } = {}) {
     return existing;
   }
   const w = document.createElement('div');
-  w.className = 'ok-badge';
+  w.className = cap.origin === 'pc' ? 'ok-badge pc-origin' : 'ok-badge';
   const img = document.createElement('img');
   img.alt = '';
   img.loading = 'lazy';
@@ -758,25 +759,17 @@ async function loadRecent(force = false) {
     // items are matched by filename after upload; originals are never fetched
     // here — addRemoteRecent uses the server thumbnail only.
     //
-    // PC-sent captures are owned by the PC-sent strip (#text-in), which reaches
-    // every one of them by horizontal scroll. They used to ALSO land here as
-    // square tiles, so a single PC send appeared twice — and the tile was the
-    // copy that made the strip look like it held "only the most recent".
-    const localList = list.filter(cap => cap.origin !== 'pc');
-    const known = new Set(localList.map(cap => cap.file));
+    // Merge server history (both phone and PC captures) into the gallery.
+    // PC-origin captures wear a subtle blue PC badge on their tile and in the viewer.
+    const known = new Set(list.map(cap => cap.file));
     for (let i = recentItems.length - 1; i >= 0; i--) {
       const item = recentItems[i];
-      if (item.fromPc) { // the strip owns it — drop any tile a previous build made
-        item.el.remove();
-        recentItems.splice(i, 1);
-        continue;
-      }
       if (item.file && item.sent && item.outboxKey == null && !known.has(item.file)) {
         item.el.remove();
         recentItems.splice(i, 1);
       }
     }
-    for (const cap of [...localList].reverse()) addRemoteRecent(cap);
+    for (const cap of [...list].reverse()) addRemoteRecent(cap);
     recentEmptyUI();
   } catch {
     // Offline reloads retain the durable outbox; server-backed history returns
@@ -1907,14 +1900,11 @@ try {
     // events are JSON ({type, ...}); plain strings fall back for safety
     let m; try { m = JSON.parse(e.data); } catch { m = { type: e.data }; }
     if ((m.type === 'capture-ready' || m.type === 'capture') && m.capture?.file) {
+      addRemoteRecent(m.capture, { live: true }); // just arrived — animate it in
       if (m.capture.origin === 'pc') {
-        // a PC-sent capture belongs to the PC-sent strip, not the grid — the
-        // same single-owner rule loadRecent() applies on a full fetch
         textRenderSignature = '';
         loadTexts();
         if (m.type === 'capture-ready') flash('New capture from PC');
-      } else {
-        addRemoteRecent(m.capture, { live: true }); // just arrived — animate it in
       }
       recentEmptyUI();
       scheduleTotalBytes();

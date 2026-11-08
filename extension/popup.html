@@ -4,71 +4,105 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark">
 <style>
-  /* design tokens — mirror DESIGN.md; the popup keeps its own copy on purpose
-     (extension pages share no stylesheet with the web UIs) */
+  /* Liquid Glass design tokens — matches the desktop workbench and mobile capture UI */
   :root {
-    --bg: #17181a; --panel: #1d1f21; --panel-2: #1a1c1f;
-    --border: #2a2c2f; --border-strong: #4a4d50;
-    --fg: #e8e8e6; --muted: #9a9c9e; --faint: #6f7274;
-    --accent: #22c55e; --accent-soft: rgba(34,197,94,.12);
-    --danger: #ef4444; --warn: #f59e0b;
-    --r: 10px; --r-sm: 8px;
+    --bg: #060913; --panel: rgba(20, 26, 42, 0.72); --panel-2: rgba(30, 38, 60, 0.62);
+    --border: rgba(255, 255, 255, 0.12); --border-strong: rgba(255, 255, 255, 0.26);
+    --fg: #f5f7ff; --muted: #98a2b8; --faint: #64708a;
+    --accent: #30d158; --accent-soft: rgba(48, 209, 88, 0.14);
+    --danger: #ff453a; --warn: #f59e0b;
+    --r: 14px; --r-sm: 10px;
   }
-  body { width: 300px; margin: 0; background: var(--bg); color: var(--fg); font: 13px system-ui, -apple-system, sans-serif; }
-  * { user-select: none; -webkit-user-select: none; }
+  body {
+    width: 316px; margin: 0;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(ellipse 90% 55% at 15% -10%, rgba(10, 132, 255, 0.22), transparent 65%),
+      radial-gradient(ellipse 85% 50% at 88% 105%, rgba(48, 209, 88, 0.14), transparent 65%);
+    color: var(--fg);
+    font: 13px/1.4 -apple-system, "SF Pro Text", system-ui, sans-serif;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
 
   /* header */
   header {
-    padding: 12px 14px; font-weight: 700; border-bottom: 1px solid #2a2c2f;
+    padding: 12px 14px; font-weight: 700; font-size: 13.5px;
+    border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between; align-items: center;
-    background: linear-gradient(180deg, #1a1c1f, #17181a);
+    background: rgba(14, 19, 34, 0.78);
+    backdrop-filter: saturate(200%) blur(24px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   }
-  header span { display: flex; align-items: center; gap: 6px; }
-  header img { border-radius: 3px; }
+  header span { display: flex; align-items: center; gap: 7px; }
+  header img { border-radius: 4px; }
 
-  /* tabs */
-  .tabs { display: flex; gap: 6px; padding: 10px 10px 0; }
-  .tab {
-    flex: 1; background: none; border: 1px solid #2a2c2f; color: #9a9c9e;
-    border-radius: 8px; padding: 6px 0; font-size: 12px; cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s;
+  /* segmented pill tabs */
+  .tabs {
+    display: flex; gap: 4px; margin: 10px 12px 2px; padding: 3px;
+    border-radius: 999px; background: rgba(10, 14, 26, 0.68);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
   }
-  .tab:hover { color: #c0c2c4; border-color: #3a3c3f; }
-  .tab.active { background: #1d1f21; color: #e8e8e6; border-color: #4a4d50; }
+  .tab {
+    flex: 1; background: none; border: 1px solid transparent; color: var(--muted);
+    border-radius: 999px; padding: 6px 0; font-size: 12px; font-weight: 600; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.active {
+    background: rgba(255, 255, 255, 0.12); color: var(--fg);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
 
   /* list */
-  .list { max-height: 340px; overflow-y: auto; padding: 8px; }
+  .list { max-height: 320px; overflow-y: auto; padding: 8px 12px; scrollbar-gutter: stable; }
   .list::-webkit-scrollbar { width: 5px; }
   .list::-webkit-scrollbar-track { background: transparent; }
-  .list::-webkit-scrollbar-thumb { background: #2a2c2f; border-radius: 3px; }
+  .list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 3px; }
 
   .item {
     display: flex; gap: 10px; align-items: center; padding: 8px;
-    border: 1px solid #2a2c2f; border-radius: 10px; margin-bottom: 8px; cursor: pointer;
-    transition: border-color .15s, background .15s;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 7px; cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transition: border-color .15s, background .15s, transform .08s;
   }
-  .item:hover { border-color: #4a4d50; background: #1d1f21; }
-  .item img { width: 56px; height: 42px; object-fit: cover; border-radius: 6px; pointer-events: none; -webkit-user-drag: none; }
-  .item .meta { color: #9a9c9e; font-size: 11px; }
+  .item:hover { border-color: var(--border-strong); background: var(--panel-2); }
+  .item img { width: 56px; height: 42px; object-fit: cover; border-radius: 8px; pointer-events: none; -webkit-user-drag: none; }
+  .item .meta { color: var(--muted); font-size: 11px; }
 
   .titem {
-    padding: 8px 10px; border: 1px solid #2a2c2f; border-radius: 10px; margin-bottom: 8px;
+    padding: 9px 11px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 7px;
     cursor: pointer; font-size: 12.5px; line-height: 1.45; word-break: break-word;
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-    transition: border-color .15s, background .15s;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transition: border-color .15s, background .15s, transform .08s;
   }
-  .titem:hover { border-color: #4a4d50; background: #1d1f21; }
-  .titem .when { color: #9a9c9e; font-size: 10px; margin-top: 4px; }
+  .titem:hover { border-color: var(--border-strong); background: var(--panel-2); }
+  .titem .when { color: var(--muted); font-size: 10.5px; margin-top: 4px; }
 
   /* the error detail here is the one thing a user needs to select + copy (to
      paste a failure into a bug report) — `* { user-select: none }` used to
      block that even though popup.js exempts .empty from its selectstart guard */
-  .empty { color: #9a9c9e; text-align: center; padding: 24px 10px; line-height: 1.6;
-    user-select: text; -webkit-user-select: text; }
+  .empty {
+    color: var(--muted); text-align: center; padding: 24px 10px; line-height: 1.6;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    user-select: text; -webkit-user-select: text;
+  }
   .empty span { user-select: text; -webkit-user-select: text; }
 
-  .status { padding: 8px 14px; color: #22c55e; font-size: 12px; min-height: 18px; transition: color .15s; }
-  .hint { padding: 0 14px 12px; color: #6f7274; font-size: 11px; line-height: 1.5; }
+  .status {
+    padding: 8px 14px 6px; color: var(--accent); font-size: 12px; font-weight: 600;
+    min-height: 20px; border-top: 1px solid var(--border); margin-top: 2px;
+    transition: color .15s;
+  }
+  .status.err { color: var(--danger); }
+
+  .hint { padding: 4px 14px 12px; color: var(--faint); font-size: 11px; line-height: 1.45; }
   /* per-site notices (undelivered captures / paste fallback) — a row of its own,
      so an async check can never overwrite the action status line */
   .notice { margin: 0 14px 6px; color: var(--warn); font-size: 10.5px; line-height: 1.5; }
@@ -76,48 +110,66 @@
 
   /* buttons */
   #sync {
-    background: none; border: 1px solid #2a2c2f; color: #9a9c9e; border-radius: 8px;
-    font-size: 11px; padding: 4px 9px; cursor: pointer; display: flex; align-items: center; gap: 4px;
-    transition: color .15s, border-color .15s, background .15s;
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 999px;
+    font-size: 11px; font-weight: 600; padding: 5px 11px; cursor: pointer;
+    display: flex; align-items: center; gap: 5px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    transition: color .15s, border-color .15s, background .15s, transform .08s;
   }
-  #sync:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
-  #sync:active { transform: scale(.96); }
+  #sync:hover { border-color: var(--border-strong); background: rgba(255, 255, 255, 0.12); }
 
   .unhide {
-    display: block; margin: 0 14px 6px; background: none; border: 1px solid #2a2c2f;
-    color: #9a9c9e; border-radius: 8px; font-size: 11px; padding: 5px 9px; cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s;
+    display: block; margin: 0 14px 6px; background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border); color: var(--muted); border-radius: 999px;
+    font-size: 11px; font-weight: 550; padding: 6px 11px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, transform .08s;
   }
-  .unhide:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
+  .unhide:hover { color: var(--fg); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.1); }
 
-  /* p button hide/show — the one control that owns the global flag, so it
-     stays visible in every state (the per-site row below comes and goes) */
+  /* collapsible advanced drawer for port override & global FAB toggle */
+  .ext-advanced {
+    margin: 0 12px 6px; border-radius: 12px;
+    background: rgba(14, 19, 34, 0.55); border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .ext-adv-summary {
+    padding: 7px 11px; font-size: 11px; font-weight: 600; color: var(--muted);
+    cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between;
+  }
+  .ext-adv-summary::-webkit-details-marker { display: none; }
+  .ext-adv-summary::after { content: '▾'; font-size: 10px; opacity: .7; transition: transform .15s; }
+  .ext-advanced[open] .ext-adv-summary::after { transform: rotate(180deg); }
+  .ext-adv-summary:hover { color: var(--fg); }
+  .ext-adv-body { padding: 4px 10px 8px; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+
+  /* p button hide/show */
   .fab-row { padding-top: 2px; }
   #fab-toggle {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    width: calc(100% - 28px);
+    width: 100%; margin: 0;
   }
   #fab-toggle .ic { width: 13px; height: 13px; }
-  #fab-toggle.off { color: #f59e0b; border-color: #5a4a20; background: rgba(245,158,11,.06); }
-  #fab-toggle.off:hover { color: #fbbf24; border-color: #6b5a2a; background: rgba(245,158,11,.1); }
+  #fab-toggle.off { color: #fbbf24; border-color: rgba(245, 158, 11, 0.42); background: rgba(245, 158, 11, 0.1); }
+  #fab-toggle.off:hover { color: #fde68a; border-color: rgba(245, 158, 11, 0.6); background: rgba(245, 158, 11, 0.16); }
 
   /* port row */
-  .port-row { display: flex; gap: 6px; margin: 0 14px 4px; }
+  .port-row { display: flex; gap: 6px; margin: 2px 0 4px; }
   .port-row input {
-    flex: 1; background: #1d1f21; border: 1px solid #2a2c2f; color: #e8e8e6;
-    border-radius: 8px; font-size: 11px; padding: 5px 8px; outline: none; min-width: 0;
+    flex: 1; background: rgba(6, 9, 19, 0.7); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 999px; font-size: 11px; padding: 5px 10px; outline: none; min-width: 0;
     transition: border-color .15s;
     user-select: text; -webkit-user-select: text; /* the port value must be selectable */
   }
-  .port-row input:focus { border-color: #4a4d50; }
-  .port-row input::placeholder { color: #6f7274; }
+  .port-row input:focus { border-color: rgba(100, 210, 255, 0.5); }
+  .port-row input::placeholder { color: var(--faint); }
   .port-row button {
-    background: none; border: 1px solid #2a2c2f; color: #9a9c9e; border-radius: 8px;
-    font-size: 11px; padding: 5px 10px; cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s;
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 999px; font-size: 11px; font-weight: 600; padding: 5px 12px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s, transform .08s;
   }
-  .port-row button:hover { color: #e8e8e6; border-color: #4a4d50; background: rgba(255,255,255,.03); }
-  .port-status { margin: 0 14px 6px; color: #6f7274; font-size: 10px; min-height: 12px; }
+  .port-row button:hover { border-color: var(--border-strong); background: rgba(255, 255, 255, 0.12); }
+  .port-status { margin: 0 2px 4px; color: var(--faint); font-size: 10px; min-height: 12px; }
 
   /* icons */
   .ic { display: inline-block; width: 12px; height: 12px; background-color: currentColor; -webkit-mask: var(--m) center/contain no-repeat; mask: var(--m) center/contain no-repeat; }
@@ -132,21 +184,12 @@
   }
 
   /* ---------- UX polish ---------- */
-  /* one keyboard-focus treatment for every control (previously Tab was invisible) */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .tab, #sync, .unhide, .port-row button { transition: color .15s, border-color .15s, background .15s, transform .08s; }
   .tab:active, #sync:active, .unhide:active, .port-row button:active { transform: scale(.97); }
-  .item, .titem { transition: border-color .15s, background .15s, transform .08s; }
   .item:active, .titem:active { transform: translateY(1px); }
-  /* items are keyboard-reachable divs (role=button + tabindex, wired in popup.js) */
   .item:focus-visible, .titem:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--border-strong); }
-  /* sync spins while it re-probes the server */
   #sync[aria-busy='true'] .ic-sync { animation: ppspin .8s linear infinite; }
   @keyframes ppspin { to { transform: rotate(360deg); } }
-  .status { min-height: 20px; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 10px; }
-  .status.err { color: var(--danger); }
-  .list { scrollbar-gutter: stable; }
-  .empty { display: flex; flex-direction: column; align-items: center; gap: 4px; }
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition: none !important; }
   }
@@ -160,19 +203,24 @@
   </div>
   <div class="list" id="list" role="tabpanel" aria-labelledby="tab-caps" aria-label="Captures and texts"><div class="empty">Loading…</div></div>
   <div class="status" id="status" role="status"></div>
-  <div class="port-row">
-    <input id="port-input" type="text" inputmode="numeric" placeholder="Port (auto)" aria-label="ProofPipe server port — leave empty to discover it automatically">
-    <button id="port-save" title="Save the port override — probed first on every discovery" aria-label="Save the port override">Set</button>
-  </div>
-  <div class="port-status" id="port-status" role="status" aria-live="polite"></div>
-  <div class="fab-row">
-    <button id="fab-toggle" class="unhide" title="Hide or show the p button on every site">
-      <i class="ic ic-eye"></i> <span id="fab-toggle-label">Hide p button everywhere</span>
-    </button>
-  </div>
   <button id="unhide" class="unhide">Show p button on this site</button>
   <div class="notice hidden" id="notice"></div>
-  <div class="hint">Click a capture to copy it, then Ctrl+V into any chat. For drag-and-drop use the <b>p</b> button on the page — drag it to move it, right-click it to hide it on that site. Selected text anywhere → right-click → "Send to phone via ProofPipe".</div>
+  <details class="ext-advanced">
+    <summary class="ext-adv-summary">Connection &amp; site options</summary>
+    <div class="ext-adv-body">
+      <div class="port-row">
+        <input id="port-input" type="text" inputmode="numeric" placeholder="Port (auto)" aria-label="ProofPipe server port — leave empty to discover it automatically">
+        <button id="port-save" title="Save the port override — probed first on every discovery" aria-label="Save the port override">Set</button>
+      </div>
+      <div class="port-status" id="port-status" role="status" aria-live="polite"></div>
+      <div class="fab-row">
+        <button id="fab-toggle" class="unhide" title="Hide or show the p button on every site">
+          <i class="ic ic-eye"></i> <span id="fab-toggle-label">Hide p button everywhere</span>
+        </button>
+      </div>
+    </div>
+  </details>
+  <div class="hint">Click any item to copy, or use the floating <b>p</b> tray on any page to drag &amp; drop.</div>
   <script src="toPng.js"></script>
   <script src="discovery.js"></script>
   <script src="files.js"></script>

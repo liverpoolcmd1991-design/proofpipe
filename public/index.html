@@ -24,19 +24,33 @@
     </a>
   </div>
 
+  <!-- Live PC Upload / Transfer Progress Pill -->
+  <div id="pc-transfer-pill" class="pc-transfer-pill hidden" role="status" aria-live="polite">
+    <div class="pc-transfer-wave" id="pc-transfer-fill"></div>
+    <span class="pc-transfer-dot" aria-hidden="true"></span>
+    <span id="pc-transfer-text" class="pc-transfer-text">Uploading…</span>
+  </div>
+
   <div class="topbar-end">
-    <button id="whats-new-btn" type="button" class="toolbtn glass-pill" title="See what each new version of ProofPipe adds" aria-haspopup="dialog" aria-controls="whats-new-backdrop">
-      <i class="ic ic-activity" aria-hidden="true"></i>
-      <span>What’s New</span>
+    <button id="whats-new-btn" type="button" class="toolbtn glass-pill ver-trigger" title="Release notes and version history" aria-haspopup="dialog" aria-controls="whats-new-backdrop">
       <span class="ver-chip" id="top-ver-chip">v1.23</span>
     </button>
-    <a href="/phone" class="toolbtn glass-pill" title="Open mobile companion capture view">
-      <i class="ic ic-phone" aria-hidden="true"></i>
-      <span>Phone App</span>
-    </a>
-    <button id="rail-toggle" class="toolbtn icon-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="rail" title="Status and recent arrivals" aria-label="Status and recent arrivals"><i class="ic ic-activity" aria-hidden="true"></i></button>
+    <button id="top-settings-btn" type="button" class="toolbtn glass-pill" title="System Settings" aria-haspopup="dialog" aria-controls="settings-backdrop">
+      <i class="ic ic-gear" aria-hidden="true"></i>
+      <span>Settings</span>
+    </button>
+    <button id="rail-toggle" class="toolbtn icon-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="rail" title="Status and pairing" aria-label="Status and pairing"><i class="ic ic-phone" aria-hidden="true"></i></button>
   </div>
 </header>
+
+<!-- Full-Window Drag-and-Drop Overlay (zero layout shift) -->
+<div id="drop-hint" class="drop-zone-overlay hidden" aria-hidden="true">
+  <div class="drop-zone-card">
+    <div class="drop-zone-icon"><i class="ic ic-upload"></i></div>
+    <div class="drop-zone-title">Drop anywhere to transfer</div>
+    <div class="muted">Images are added to Photos &amp; Captures · Other files go to Shared Files</div>
+  </div>
+</div>
 
 <div class="app">
 <main>
@@ -53,7 +67,7 @@
     <aside class="card side" id="rail" aria-label="Server status and pairing">
       <div class="side-head">
         <div class="pill"><span class="dot ok" id="conn-dot"></span><span id="conn-text">Live</span></div>
-        <button id="settings-btn" class="toolbtn settings-btn" title="Settings…" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-backdrop"><i class="ic ic-gear"></i><span>Settings</span></button>
+        <button id="settings-btn" class="toolbtn settings-btn" title="Settings…" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-backdrop"><i class="ic ic-gear"></i><span>Configure</span></button>
       </div>
 
       <section class="rail-card" id="status-card" aria-labelledby="status-label">
@@ -72,6 +86,10 @@
           <div class="qr-frame">
             <img id="qr" src="/qr.png" alt="Pairing QR code — scan it with your phone">
           </div>
+          <button type="button" id="copy-phone-url" class="pair-url-btn" title="Click to copy phone app link">
+            <i class="ic ic-copy" aria-hidden="true"></i>
+            <span id="pair-phone-url" class="mono">/phone</span>
+          </button>
         </div>
       </section>
 
@@ -81,13 +99,6 @@
         </div>
         <div class="meter" id="meter" role="progressbar" aria-label="Storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i id="meter-fill"></i></div>
         <div class="rail-sub" id="cap-text">0 B used</div>
-      </section>
-
-      <section class="rail-card" id="recent-card" aria-labelledby="recent-label">
-        <div class="rail-card-head">
-          <h3 class="eyebrow" id="recent-label">Recent Activity</h3>
-        </div>
-        <div id="recent-list" class="recent-list"><div class="muted">No activity yet</div></div>
       </section>
     </aside>
 
@@ -137,16 +148,12 @@
             </div>
 
             <button id="density-toggle" class="toolbtn icon-btn" title="Toggle grid aspect size" aria-label="Toggle grid density"><i class="ic ic-grid"></i></button>
+            <button id="clear-captures" class="btn danger-outline hidden" title="Delete all captures">Clear All</button>
             <label class="btn primary" for="pc-upload-input" role="button" tabindex="0">
               <i class="ic ic-upload"></i> Import Photo
               <input type="file" id="pc-upload-input" accept="image/*" multiple class="sr-only">
             </label>
-            <button id="clear-captures" class="btn danger-outline" title="Delete all captures">Clear All</button>
           </div>
-        </div>
-
-        <div id="drop-hint" class="drop-zone-banner hidden">
-          <i class="ic ic-upload"></i> Drop images or files anywhere to transfer to ProofPipe
         </div>
 
         <div id="grid" class="capture-grid" role="region" aria-label="Captured photos"></div>
@@ -178,11 +185,11 @@
 
           <div class="card-actions">
             <button id="files-delete-selected" class="btn danger-outline hidden">Remove Selected (<span id="files-sel-count">0</span>)</button>
+            <button id="clear-files" class="btn danger-outline hidden" title="Delete all transferred files">Clear Files</button>
             <label class="btn primary-tinted" for="pc-file-input" role="button" tabindex="0">
               <i class="ic ic-file"></i> Send File to Phone
               <input type="file" id="pc-file-input" multiple class="sr-only">
             </label>
-            <button id="clear-files" class="btn danger-outline" title="Delete all transferred files">Clear Files</button>
           </div>
         </div>
 
@@ -273,7 +280,7 @@
     <div class="modal-head">
       <div>
         <h2 id="texts-dialog-title">Messages &amp; Links</h2>
-        <p class="muted modal-sub">Click any message bubble to copy it to your clipboard.</p>
+        <p class="muted modal-sub">Click any message row to copy it, or open shared links directly.</p>
       </div>
       <div class="modal-head-actions">
         <button id="clear-texts-btn" class="btn danger-outline">Clear History</button>
@@ -289,8 +296,11 @@
   <div class="modal-box settings-box">
     <div class="modal-head">
       <div>
-        <h2 id="settings-dialog-title">System Settings</h2>
-        <p class="muted modal-sub">Configure auto-paste, transfer compression, and storage limits.</p>
+        <div class="title-line">
+          <h2 id="settings-dialog-title">System Settings</h2>
+          <span id="settings-save-state" class="settings-save-pill hidden" role="status" aria-live="polite">Saved ✓</span>
+        </div>
+        <p class="muted modal-sub">Changes save automatically across your PC and paired phone.</p>
       </div>
       <button id="settings-close" class="toolbtn icon-btn modal-close-pill" aria-label="Close settings"><i class="ic ic-x"></i></button>
     </div>
@@ -301,7 +311,7 @@
         <div class="setting-row">
           <div class="setting-info">
             <label for="set-autopaste" class="setting-title">Auto-Paste Incoming Phone Captures</label>
-            <span class="muted">Automatically paste new phone photos into the active AI chat editor in your browser.</span>
+            <span class="muted">Automatically paste new phone photos into the active chat editor in your browser.</span>
           </div>
           <input type="checkbox" id="set-autopaste" class="pp-check">
         </div>
@@ -366,7 +376,7 @@
           </div>
           <div class="setting-controls-inline">
             <input type="number" id="set-storage-cap" class="pp-input mono" min="50" max="1048576" step="50" value="500">
-            <button id="save-storage-cap" class="btn">Apply</button>
+            <button id="save-storage-cap" class="btn hidden" aria-hidden="true" tabindex="-1">Apply</button>
           </div>
         </div>
 
@@ -377,7 +387,7 @@
           </div>
           <div class="setting-controls-inline">
             <input type="number" id="set-retention" class="pp-input mono" min="0" max="3650" step="1" value="0">
-            <button id="save-retention" class="btn">Apply</button>
+            <button id="save-retention" class="btn hidden" aria-hidden="true" tabindex="-1">Apply</button>
           </div>
         </div>
 
@@ -408,7 +418,7 @@
         <button id="lb-prev" class="toolbtn icon-btn" title="Previous capture (←)" aria-label="Previous capture"><i class="ic ic-left"></i></button>
         <button id="lb-next" class="toolbtn icon-btn" title="Next capture (→)" aria-label="Next capture"><i class="ic ic-right"></i></button>
         <button id="lb-copy" class="btn primary"><i class="ic ic-copy"></i> Copy PNG</button>
-        <button id="lb-send-phone" class="btn"><i class="ic ic-phone"></i> Send to Phone</button>
+        <button id="lb-send-phone" class="btn" title="Pin capture to phone inbox"><i class="ic ic-phone"></i> Pin to Phone</button>
         <a id="lb-download" class="btn" download><i class="ic ic-download"></i> Save</a>
         <button id="lb-delete" class="btn danger-outline"><i class="ic ic-trash"></i> Delete</button>
         <button id="lb-close" class="toolbtn icon-btn modal-close-pill" title="Close preview (Esc)" aria-label="Close preview"><i class="ic ic-x"></i></button>
@@ -418,6 +428,24 @@
       <img id="lightbox-img" alt="Full resolution capture preview">
     </div>
   </div>
+</div>
+
+<!-- PC CONFIRMATION DIALOG (prevents accidental bulk data loss) -->
+<div id="pc-confirm-backdrop" class="modal-backdrop hidden" role="alertdialog" aria-modal="true" aria-labelledby="pc-confirm-title">
+  <div class="modal-box pc-confirm-box">
+    <h2 id="pc-confirm-title" class="pc-confirm-title">Confirm Action</h2>
+    <p id="pc-confirm-body" class="muted pc-confirm-body"></p>
+    <div class="pc-confirm-actions">
+      <button type="button" id="pc-confirm-cancel" class="btn">Cancel</button>
+      <button type="button" id="pc-confirm-ok" class="btn danger-solid">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- PC UNDO SNACKBAR -->
+<div id="pc-undo-toast" class="pc-undo-toast hidden">
+  <span id="pc-undo-msg" role="status" aria-live="polite"></span>
+  <button type="button" id="pc-undo-btn" class="pc-undo-btn">Undo</button>
 </div>
 
 <!-- HUD TOAST -->

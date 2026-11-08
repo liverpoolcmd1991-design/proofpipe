@@ -4,22 +4,22 @@ const RELEASES = [
   {
     version: 'v1.23.0',
     date: '2026-11',
-    headline: 'Liquid Glass Workbench, Pre-Compiled SQL & Scoped Route Limits',
+    headline: 'Liquid Glass UX Overhaul, Safe Deletions, Two-Way Sync & Pre-Compiled SQL',
     changes: [
       {
         scope: 'server',
-        title: 'Integrated What’s New sheet & Messages dock',
-        detail: 'Unified the Desktop Workbench with a Liquid Glass interface, dedicated Messages & Clipboard dock, and in-app What’s New modal sheet.',
+        title: 'Safe destructive actions, Undo snackbar & live XHR upload progress',
+        detail: 'Added a confirmation modal for bulk wipes, a 5-second Undo snackbar for single deletions, full-window drag-and-drop overlay, hover photo actions, and live byte-level upload progress on the PC workbench.',
       },
       {
-        scope: 'server',
-        title: 'Pre-compiled SQLite statements & indexed lookups',
-        detail: 'Added composite SQLite indexes and pre-compiled all hot-path queries at server startup so zero runtime statement compilation occurs on requests.',
+        scope: 'phone',
+        title: 'Two-way capture gallery sync & full-screen text composer',
+        detail: 'PC-origin captures now appear automatically in the phone gallery with a PC badge, accompanied by a labeled From your PC inbox strip and a minimal full-screen text editor.',
       },
       {
-        scope: 'server',
-        title: 'Per-route body limits & structured text classification',
-        detail: 'Scoped the 21 MB multipart body limit strictly to /upload and /share while adding explicit kind classification on POST /api/text.',
+        scope: 'extension',
+        title: 'Liquid Glass extension popup & collapsible advanced drawer',
+        detail: 'Redesigned the Chrome extension popup with translucent glass cards, segmented pill tabs, and a collapsible drawer for port override and site button controls.',
       },
     ],
   },
@@ -195,8 +195,10 @@ let compactGrid = false;
 let lightboxIdx = -1;
 let qrHiddenByUser = false;
 let toastTimer = null;
+let settingsSaveBadgeTimer = null;
 let activeReleaseCategory = 'all';
 let releaseSearchQuery = '';
+let resolvedPhoneUrl = `${location.origin}/phone`;
 
 function fmtBytes(n) {
   const b = Number(n) || 0;
@@ -224,6 +226,157 @@ function showToast(msg) {
   el.classList.remove('hidden');
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.add('hidden'), 2400);
+}
+
+function showSettingsSaved(label = 'Saved ✓') {
+  const pill = $('#settings-save-state');
+  if (!pill) return;
+  pill.textContent = label;
+  pill.classList.remove('hidden');
+  if (settingsSaveBadgeTimer) clearTimeout(settingsSaveBadgeTimer);
+  settingsSaveBadgeTimer = setTimeout(() => pill.classList.add('hidden'), 2000);
+}
+
+// ---------- PC Confirmation Modal (prevents accidental nuclear wipes) ----------
+let confirmResolver = null;
+function closePcConfirm(answer = false) {
+  const bd = $('#pc-confirm-backdrop');
+  if (bd) bd.classList.add('hidden');
+  if (confirmResolver) {
+    const res = confirmResolver;
+    confirmResolver = null;
+    res(answer);
+  }
+}
+
+function pcConfirm({ title, body = '', ok = 'Delete' }) {
+  const bd = $('#pc-confirm-backdrop');
+  const titleEl = $('#pc-confirm-title');
+  const bodyEl = $('#pc-confirm-body');
+  const okBtn = $('#pc-confirm-ok');
+  const cancelBtn = $('#pc-confirm-cancel');
+  if (!bd || !titleEl || !okBtn || !cancelBtn) {
+    return Promise.resolve(true);
+  }
+  if (confirmResolver) closePcConfirm(false);
+  titleEl.textContent = title;
+  if (bodyEl) {
+    bodyEl.textContent = body;
+    bodyEl.classList.toggle('hidden', !body);
+  }
+  okBtn.textContent = ok;
+  bd.classList.remove('hidden');
+  cancelBtn.focus();
+  return new Promise(resolve => {
+    confirmResolver = resolve;
+  });
+}
+
+// ---------- PC 5-Second Undo Snackbar for Single-Item Deletions ----------
+let pcUndoState = null;
+
+function flushPcUndo() {
+  if (!pcUndoState) return;
+  const { timer, perform } = pcUndoState;
+  clearTimeout(timer);
+  pcUndoState = null;
+  $('#pc-undo-toast')?.classList.add('hidden');
+  Promise.resolve().then(perform).catch(() => {});
+}
+
+function startPcUndo({ msg, perform, restore }) {
+  if (pcUndoState) flushPcUndo();
+  const bar = $('#pc-undo-toast');
+  const msgEl = $('#pc-undo-msg');
+  if (!bar || !msgEl) {
+    Promise.resolve().then(perform).catch(() => {});
+    return;
+  }
+  msgEl.textContent = msg;
+  bar.classList.remove('hidden');
+  const timer = setTimeout(() => {
+    pcUndoState = null;
+    bar.classList.add('hidden');
+    Promise.resolve().then(perform).catch(() => {});
+  }, 5000);
+  pcUndoState = { timer, perform, restore };
+}
+
+// ---------- Live PC Upload Progress Pill ----------
+let pcTransferTotal = 0;
+let pcTransferDone = 0;
+
+function updatePcTransferUI(name, pct) {
+  const pill = $('#pc-transfer-pill');
+  const fill = $('#pc-transfer-fill');
+  const text = $('#pc-transfer-text');
+  if (!pill || !fill || !text) return;
+  pill.classList.remove('hidden');
+  const batchSuffix = pcTransferTotal > 1 ? ` (${Math.min(pcTransferDone + 1, pcTransferTotal)}/${pcTransferTotal})` : '';
+  const pctLabel = pct == null || pct < 0 ? 'Uploading' : (pct >= 100 ? 'Processing' : `${pct}%`);
+  text.textContent = `${pctLabel} · ${name}${batchSuffix}`;
+  const itemFrac = pct == null || pct < 0 ? 0.5 : Math.max(0.08, Math.min(1, pct / 100));
+  const scale = Math.max(0.12, Math.min(1, (pcTransferDone + itemFrac) / Math.max(1, pcTransferTotal)));
+  pill.style.setProperty('--pc-xfer-scale', scale.toFixed(3));
+}
+
+function endPcTransferItem() {
+  pcTransferDone++;
+  if (pcTransferDone >= pcTransferTotal) {
+    pcTransferTotal = 0;
+    pcTransferDone = 0;
+    const pill = $('#pc-transfer-pill');
+    if (pill) {
+      pill.classList.add('hidden');
+      pill.style.setProperty('--pc-xfer-scale', '0');
+    }
+  }
+}
+
+function uploadWithProgress(url, fd, name) {
+  if (!pcTransferTotal) {
+    pcTransferTotal = 1;
+    pcTransferDone = 0;
+  }
+  updatePcTransferUI(name, 0);
+
+  if (typeof XMLHttpRequest !== 'function') {
+    return fetch(url, { method: 'POST', body: fd }).finally(endPcTransferItem);
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    if (xhr.upload) {
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable && e.total > 0) {
+          const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+          updatePcTransferUI(name, pct);
+        } else {
+          updatePcTransferUI(name, -1);
+        }
+      };
+    }
+    xhr.onload = () => {
+      endPcTransferItem();
+      const ok = xhr.status >= 200 && xhr.status < 300;
+      const bodyText = xhr.responseText || '';
+      resolve({
+        ok,
+        status: xhr.status,
+        json: async () => JSON.parse(bodyText || '{}'),
+      });
+    };
+    xhr.onerror = () => {
+      endPcTransferItem();
+      reject(new Error('network error'));
+    };
+    xhr.onabort = () => {
+      endPcTransferItem();
+      reject(new Error('aborted'));
+    };
+    xhr.send(fd);
+  });
 }
 
 // Custom Liquid Glass Popover Menu logic
@@ -366,7 +519,7 @@ async function sendCaptureToPhone(file) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body: url, source: 'pc', kind: 'media' }),
     });
-    if (r.ok) showToast('Sent capture to phone');
+    if (r.ok) showToast('Pinned capture to phone inbox');
   } catch {
     showToast('Failed to send capture to phone');
   }
@@ -471,10 +624,12 @@ function renderCaptures() {
   const empty = $('#grid-empty');
   const countBadge = $('#captures-count');
   const moreWrap = $('#captures-more-wrap');
+  const clearBtn = $('#clear-captures');
   if (!grid) return;
 
   const list = filteredSortedCaptures();
   if (countBadge) countBadge.textContent = String(list.length);
+  if (clearBtn) clearBtn.classList.toggle('hidden', captures.length === 0);
   grid.classList.toggle('compact', compactGrid);
   grid.replaceChildren();
 
@@ -494,7 +649,10 @@ function renderCaptures() {
 
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'cap-thumb-wrap';
-    thumbWrap.onclick = () => openLightbox(idx);
+    thumbWrap.onclick = e => {
+      if (e.target.closest('.cap-hover-actions')) return;
+      openLightbox(idx);
+    };
 
     const img = document.createElement('img');
     img.loading = 'lazy';
@@ -507,47 +665,64 @@ function renderCaptures() {
     badge.className = `cap-badge ${isPc ? 'pc' : 'phone'}`;
     badge.textContent = isPc ? 'PC' : 'Phone';
 
-    thumbWrap.append(img, badge);
-
-    const meta = document.createElement('div');
-    meta.className = 'cap-meta';
-    const timeSpan = document.createElement('span');
-    timeSpan.textContent = fmtTime(cap.created_at);
-    const sizeSpan = document.createElement('span');
-    sizeSpan.className = 'mono';
-    sizeSpan.textContent = fmtBytes(cap.bytes || 0);
-    meta.append(timeSpan, sizeSpan);
-
-    const actions = document.createElement('div');
-    actions.className = 'cap-actions';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'toolbtn';
-    copyBtn.title = 'Copy PNG to clipboard';
-    copyBtn.innerHTML = '<i class="ic ic-copy"></i> Copy';
-    copyBtn.onclick = () => copyCapturePng(cap.file);
+    const hoverActions = document.createElement('div');
+    hoverActions.className = 'cap-hover-actions';
 
     const phoneBtn = document.createElement('button');
+    phoneBtn.type = 'button';
     phoneBtn.className = 'toolbtn';
-    phoneBtn.title = 'Send capture to phone';
+    phoneBtn.title = 'Pin capture to phone inbox';
+    phoneBtn.setAttribute('aria-label', 'Pin capture to phone inbox');
     phoneBtn.innerHTML = '<i class="ic ic-phone"></i>';
-    phoneBtn.onclick = () => sendCaptureToPhone(cap.file);
+    phoneBtn.onclick = e => {
+      e.stopPropagation();
+      sendCaptureToPhone(cap.file);
+    };
 
     const dlLink = document.createElement('a');
     dlLink.className = 'toolbtn';
     dlLink.href = `/media/${encodeURIComponent(cap.file)}`;
     dlLink.download = cap.file;
     dlLink.title = 'Download original';
+    dlLink.setAttribute('aria-label', 'Download original');
     dlLink.innerHTML = '<i class="ic ic-download"></i>';
+    dlLink.onclick = e => e.stopPropagation();
 
     const delBtn = document.createElement('button');
-    delBtn.className = 'toolbtn';
+    delBtn.type = 'button';
+    delBtn.className = 'toolbtn cap-del-btn';
     delBtn.title = 'Delete capture';
+    delBtn.setAttribute('aria-label', 'Delete capture');
     delBtn.innerHTML = '<i class="ic ic-trash"></i>';
-    delBtn.onclick = () => deleteCapture(cap.id);
+    delBtn.onclick = e => {
+      e.stopPropagation();
+      deleteCapture(cap.id);
+    };
 
-    actions.append(copyBtn, phoneBtn, dlLink, delBtn);
-    tile.append(thumbWrap, meta, actions);
+    hoverActions.append(phoneBtn, dlLink, delBtn);
+    thumbWrap.append(img, badge, hoverActions);
+
+    const footer = document.createElement('div');
+    footer.className = 'cap-footer';
+
+    const meta = document.createElement('div');
+    meta.className = 'cap-meta';
+    const sizeSpan = document.createElement('span');
+    sizeSpan.className = 'cap-meta-size mono';
+    sizeSpan.textContent = fmtBytes(cap.bytes || 0);
+    const timeSpan = document.createElement('span');
+    timeSpan.textContent = fmtTime(cap.created_at);
+    meta.append(sizeSpan, timeSpan);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.type = 'button';
+    copyBtn.className = 'btn primary-tinted cap-copy-btn';
+    copyBtn.title = 'Copy PNG to clipboard';
+    copyBtn.innerHTML = '<i class="ic ic-copy"></i> Copy';
+    copyBtn.onclick = () => copyCapturePng(cap.file);
+
+    footer.append(meta, copyBtn);
+    tile.append(thumbWrap, footer);
     grid.appendChild(tile);
   });
 }
@@ -577,16 +752,31 @@ function closeLightbox() {
   $('#lightbox')?.classList.add('hidden');
 }
 
-async function deleteCapture(id) {
-  try {
-    const r = await fetch(`/api/captures/${id}`, { method: 'DELETE' });
-    if (r.ok) {
-      captures = captures.filter(c => c.id !== id);
-      renderCaptures();
-      loadStats();
-      if (lightboxIdx !== -1) closeLightbox();
-    }
-  } catch {}
+function deleteCapture(id) {
+  const idx = captures.findIndex(c => c.id === id);
+  if (idx === -1) return;
+  const removed = captures[idx];
+  captures.splice(idx, 1);
+  if (lightboxIdx !== -1) closeLightbox();
+  renderCaptures();
+
+  startPcUndo({
+    msg: `Deleted capture #${id}`,
+    restore: () => {
+      if (!captures.some(c => c.id === removed.id)) {
+        captures.splice(Math.min(idx, captures.length), 0, removed);
+        renderCaptures();
+      }
+    },
+    perform: async () => {
+      try {
+        await fetch(`/api/captures/${id}`, { method: 'DELETE' });
+        loadStats();
+      } catch {
+        loadCaptures();
+      }
+    },
+  });
 }
 
 function syncFileSelectionUI() {
@@ -602,9 +792,11 @@ function renderFiles() {
   const listEl = $('#file-list');
   const emptyEl = $('#files-empty');
   const countEl = $('#files-count');
+  const clearBtn = $('#clear-files');
   if (!listEl) return;
 
   if (countEl) countEl.textContent = String(files.length);
+  if (clearBtn) clearBtn.classList.toggle('hidden', files.length === 0);
   for (const id of [...selectedFiles]) {
     if (!files.some(f => f.id === id)) selectedFiles.delete(id);
   }
@@ -656,16 +848,36 @@ function renderFiles() {
     dl.innerHTML = '<i class="ic ic-download"></i> Save';
 
     const del = document.createElement('button');
+    del.type = 'button';
     del.className = 'toolbtn icon-btn';
     del.title = 'Delete file';
+    del.setAttribute('aria-label', `Delete ${f.name}`);
     del.innerHTML = '<i class="ic ic-trash"></i>';
-    del.onclick = async () => {
-      const r = await fetch(`/api/files/${f.id}`, { method: 'DELETE' });
-      if (r.ok) {
-        files = files.filter(x => x.id !== f.id);
-        renderFiles();
-        loadStats();
-      }
+    del.onclick = () => {
+      const idx = files.findIndex(x => x.id === f.id);
+      if (idx === -1) return;
+      const removed = files[idx];
+      files.splice(idx, 1);
+      selectedFiles.delete(f.id);
+      renderFiles();
+
+      startPcUndo({
+        msg: `Removed ${removed.name}`,
+        restore: () => {
+          if (!files.some(x => x.id === removed.id)) {
+            files.splice(Math.min(idx, files.length), 0, removed);
+            renderFiles();
+          }
+        },
+        perform: async () => {
+          try {
+            await fetch(`/api/files/${f.id}`, { method: 'DELETE' });
+            loadStats();
+          } catch {
+            loadFiles();
+          }
+        },
+      });
     };
 
     actions.append(dl, del);
@@ -674,14 +886,20 @@ function renderFiles() {
   }
 }
 
+function isUrlText(str) {
+  return /^https?:\/\/\S+$/i.test(String(str || '').trim());
+}
+
 function renderTexts() {
   const recentSec = $('#text-recent');
   const recentRows = $('#text-recent-rows');
   const dialogList = $('#texts-dialog-list');
   const countBadge = $('#texts-count');
+  const clearBtn = $('#clear-texts-btn');
   const plainTexts = texts.filter(t => t.kind !== 'media');
 
   if (countBadge) countBadge.textContent = String(plainTexts.length);
+  if (clearBtn) clearBtn.classList.toggle('hidden', plainTexts.length === 0);
 
   if (recentSec && recentRows) {
     recentRows.replaceChildren();
@@ -690,13 +908,39 @@ function renderTexts() {
     } else {
       recentSec.classList.remove('hidden');
       for (const t of plainTexts.slice(0, 3)) {
+        const wrap = document.createElement('div');
+        wrap.className = 'text-pill-wrap';
+
         const pill = document.createElement('button');
         pill.type = 'button';
         pill.className = 'text-pill';
         pill.title = 'Click to copy to clipboard';
-        pill.textContent = `${t.source === 'phone' ? 'Phone · ' : 'PC · '}${t.body}`;
         pill.onclick = () => copyText(t.body);
-        recentRows.appendChild(pill);
+
+        const tag = document.createElement('span');
+        const fromPhone = t.source === 'phone';
+        tag.className = `text-origin-tag ${fromPhone ? 'phone' : 'pc'}`;
+        tag.textContent = fromPhone ? 'Phone' : 'PC';
+
+        const bodySpan = document.createElement('span');
+        bodySpan.className = `text-pill-body${isUrlText(t.body) ? ' is-url' : ''}`;
+        bodySpan.textContent = t.body;
+
+        pill.append(tag, bodySpan);
+        wrap.appendChild(pill);
+
+        if (isUrlText(t.body)) {
+          const openLink = document.createElement('a');
+          openLink.className = 'text-open-link';
+          openLink.href = t.body.trim();
+          openLink.target = '_blank';
+          openLink.rel = 'noopener noreferrer';
+          openLink.title = 'Open URL in new tab';
+          openLink.textContent = 'Open ↗';
+          wrap.appendChild(openLink);
+        }
+
+        recentRows.appendChild(wrap);
       }
     }
   }
@@ -715,21 +959,72 @@ function renderTexts() {
       row.className = 'text-dialog-row';
       row.onclick = () => copyText(t.body);
 
+      const left = document.createElement('div');
+      left.className = 'text-dialog-left';
+
+      const tag = document.createElement('span');
+      const fromPhone = t.source === 'phone';
+      tag.className = `text-origin-tag ${fromPhone ? 'phone' : 'pc'}`;
+      tag.textContent = fromPhone ? 'Phone' : 'PC';
+
       const body = document.createElement('div');
       body.className = 'text-dialog-body';
-      body.textContent = `${t.source === 'phone' ? 'Phone · ' : 'PC · '}${t.body}`;
+      body.textContent = t.body;
+
+      left.append(tag, body);
+
+      const actions = document.createElement('div');
+      actions.className = 'text-dialog-actions';
+
+      if (t.created_at) {
+        const timeEl = document.createElement('span');
+        timeEl.className = 'text-dialog-time';
+        timeEl.textContent = fmtTime(t.created_at);
+        actions.appendChild(timeEl);
+      }
+
+      if (isUrlText(t.body)) {
+        const openLink = document.createElement('a');
+        openLink.className = 'text-open-link';
+        openLink.href = t.body.trim();
+        openLink.target = '_blank';
+        openLink.rel = 'noopener noreferrer';
+        openLink.textContent = 'Open ↗';
+        openLink.onclick = e => e.stopPropagation();
+        actions.appendChild(openLink);
+      }
 
       const del = document.createElement('button');
+      del.type = 'button';
       del.className = 'toolbtn icon-btn';
       del.title = 'Delete message';
+      del.setAttribute('aria-label', 'Delete message');
       del.innerHTML = '<i class="ic ic-trash"></i>';
-      del.onclick = async e => {
+      del.onclick = e => {
         e.stopPropagation();
-        await fetch(`/api/text/${t.id}`, { method: 'DELETE' });
-        await loadTexts();
+        const idx = texts.findIndex(x => x.id === t.id);
+        if (idx === -1) return;
+        const removed = texts[idx];
+        texts.splice(idx, 1);
+        renderTexts();
+
+        startPcUndo({
+          msg: 'Deleted message',
+          restore: () => {
+            if (!texts.some(x => x.id === removed.id)) {
+              texts.splice(Math.min(idx, texts.length), 0, removed);
+              renderTexts();
+            }
+          },
+          perform: async () => {
+            await fetch(`/api/text/${t.id}`, { method: 'DELETE' });
+            await loadTexts();
+          },
+        });
       };
 
-      row.append(body, del);
+      actions.appendChild(del);
+      row.append(left, actions);
       dialogList.appendChild(row);
     }
   }
@@ -828,37 +1123,11 @@ async function loadStats() {
     if (meter) meter.setAttribute('aria-valuenow', String(pct));
     if (fill) fill.style.width = `${pct}%`;
     if (capText) capText.textContent = `${fmtBytes(used)} of ${fmtBytes(cap)} (${pct}%)`;
-
-    const recentList = $('#recent-list');
-    if (recentList) {
-      recentList.replaceChildren();
-      const rec = Array.isArray(s.recent) ? s.recent : [];
-      if (!rec.length) {
-        const empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.textContent = 'No activity yet';
-        recentList.appendChild(empty);
-      } else {
-        for (const item of rec) {
-          const row = document.createElement('div');
-          row.className = 'recent-row';
-          const title = document.createElement('span');
-          title.className = 'recent-row-title';
-          title.textContent = `${item.dir === 'phone' ? 'Phone' : 'PC'} · ${item.label}`;
-          const time = document.createElement('span');
-          time.className = 'muted mono';
-          time.textContent = fmtTime(item.at);
-          row.append(title, time);
-          recentList.appendChild(row);
-        }
-      }
-    }
   } catch {}
 }
 
 // Smart, automatic LAN IP selection — filters out non-routable 169.254.x.x
-// link-local addresses and picks the highest-priority reachable interface
-// without exposing a multi-address dropdown selector.
+// link-local addresses and picks the highest-priority reachable interface.
 async function loadLan() {
   try {
     const r = await fetch('/api/lan');
@@ -866,12 +1135,17 @@ async function loadLan() {
     const { ips = [], port = 8787, scheme = 'http' } = await r.json();
     const qr = $('#qr');
     const emptyUrl = $('#empty-phone-url');
+    const pairUrl = $('#pair-phone-url');
 
     const routableIps = ips.filter(ip => ip && !ip.startsWith('169.254.') && !ip.startsWith('127.'));
     const bestIp = routableIps[0] || null;
+    resolvedPhoneUrl = bestIp ? `${scheme}://${bestIp}:${port}/phone` : `${location.origin}/phone`;
 
     if (emptyUrl) {
       emptyUrl.textContent = bestIp ? `${scheme}://${bestIp}:${port}/phone` : '/phone';
+    }
+    if (pairUrl) {
+      pairUrl.textContent = bestIp ? `${scheme}://${bestIp}:${port}/phone` : '/phone';
     }
     if (qr) qr.src = bestIp ? `/qr.png?ip=${encodeURIComponent(bestIp)}` : '/qr.png';
   } catch {}
@@ -923,7 +1197,7 @@ async function uploadPhotoBlob(blob, filename = 'capture.png') {
   fd.append('source', 'pc');
   fd.append('photo', blob, filename);
   try {
-    const r = await fetch('/upload', { method: 'POST', body: fd });
+    const r = await uploadWithProgress('/upload', fd, filename);
     if (r.ok) {
       showToast('Imported photo to library');
       await loadCaptures();
@@ -942,7 +1216,7 @@ async function uploadPcFile(file) {
   fd.append('dir', 'pc');
   fd.append('file', file, file.name);
   try {
-    const r = await fetch('/api/files', { method: 'POST', body: fd });
+    const r = await uploadWithProgress('/api/files', fd, file.name);
     if (r.ok) {
       showToast(`Sent ${file.name} to phone`);
       await loadFiles();
@@ -1060,6 +1334,21 @@ function wireEvents() {
   // Close custom glass popover dropdowns when clicking anywhere outside
   document.addEventListener('click', () => closeAllGlassSelects());
 
+  // Confirmation modal buttons
+  $('#pc-confirm-cancel')?.addEventListener('click', () => closePcConfirm(false));
+  $('#pc-confirm-ok')?.addEventListener('click', () => closePcConfirm(true));
+
+  // Undo snackbar button
+  $('#pc-undo-btn')?.addEventListener('click', () => {
+    if (!pcUndoState) return;
+    const { timer, restore } = pcUndoState;
+    clearTimeout(timer);
+    pcUndoState = null;
+    $('#pc-undo-toast')?.classList.add('hidden');
+    if (typeof restore === 'function') restore();
+    showToast('Restored ✓');
+  });
+
   // Wire custom Liquid Glass Popover Menus
   wireGlassSelect($('#capture-sort'), val => {
     captureSort = val || 'new';
@@ -1071,10 +1360,14 @@ function wireEvents() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: val }),
-    });
+    }).then(r => { if (r.ok) showSettingsSaved(); }).catch(() => {});
   });
 
   syncRangeFill($('#set-quality-level'));
+
+  $('#copy-phone-url')?.addEventListener('click', () => {
+    copyText(resolvedPhoneUrl);
+  });
 
   $('#text-send')?.addEventListener('click', sendTextFromBar);
   $('#text-input')?.addEventListener('keydown', e => {
@@ -1129,25 +1422,36 @@ function wireEvents() {
   });
   $('#texts-close')?.addEventListener('click', () => $('#texts-backdrop')?.classList.add('hidden'));
   $('#clear-texts-btn')?.addEventListener('click', async () => {
+    const plainCount = texts.filter(t => t.kind !== 'media').length;
+    if (!plainCount) return;
+    if (!await pcConfirm({
+      title: `Clear all ${plainCount} message${plainCount === 1 ? '' : 's'}?`,
+      body: 'This permanently removes message history from both PC and phone.',
+      ok: 'Clear History',
+    })) return;
     await fetch('/api/text', { method: 'DELETE' });
     await loadTexts();
+    showToast('Cleared message history');
   });
 
-  $('#settings-btn')?.addEventListener('click', () => {
+  const openSettingsModal = () => {
     loadSettings();
     $('#settings-backdrop')?.classList.remove('hidden');
-  });
+  };
+  $('#settings-btn')?.addEventListener('click', openSettingsModal);
+  $('#top-settings-btn')?.addEventListener('click', openSettingsModal);
   $('#settings-close')?.addEventListener('click', () => {
     closeAllGlassSelects();
     $('#settings-backdrop')?.classList.add('hidden');
   });
 
   // Close modals when clicking the backdrop itself
-  for (const id of ['#whats-new-backdrop', '#texts-backdrop', '#settings-backdrop', '#lightbox']) {
+  for (const id of ['#whats-new-backdrop', '#texts-backdrop', '#settings-backdrop', '#lightbox', '#pc-confirm-backdrop']) {
     $(id)?.addEventListener('click', e => {
       if (e.target === $(id)) {
         closeAllGlassSelects();
         if (id === '#lightbox') closeLightbox();
+        else if (id === '#pc-confirm-backdrop') closePcConfirm(false);
         else $(id)?.classList.add('hidden');
       }
     });
@@ -1190,16 +1494,29 @@ function wireEvents() {
   $('#pc-upload-input')?.addEventListener('change', async e => {
     const list = [...(e.target.files || [])];
     e.target.value = '';
+    if (!list.length) return;
+    pcTransferTotal = list.length;
+    pcTransferDone = 0;
     for (const f of list) await uploadPhotoBlob(f, f.name);
   });
 
   $('#pc-file-input')?.addEventListener('change', async e => {
     const list = [...(e.target.files || [])];
     e.target.value = '';
+    if (!list.length) return;
+    pcTransferTotal = list.length;
+    pcTransferDone = 0;
     for (const f of list) await uploadPcFile(f);
   });
 
   $('#clear-captures')?.addEventListener('click', async () => {
+    if (!captures.length) return;
+    if (!await pcConfirm({
+      title: `Delete all ${captures.length} capture${captures.length === 1 ? '' : 's'}?`,
+      body: 'All stored photos will be permanently deleted from this PC.',
+      ok: 'Delete All Photos',
+    })) return;
+    flushPcUndo();
     const r = await fetch('/api/captures', { method: 'DELETE' });
     if (r.ok) {
       captures = [];
@@ -1214,6 +1531,12 @@ function wireEvents() {
   $('#files-delete-selected')?.addEventListener('click', async () => {
     const ids = [...selectedFiles];
     if (!ids.length) return;
+    if (!await pcConfirm({
+      title: `Remove ${ids.length} selected file${ids.length === 1 ? '' : 's'}?`,
+      body: 'Selected files will be removed from Shared Files.',
+      ok: 'Remove Selected',
+    })) return;
+    flushPcUndo();
     const r = await fetch('/api/files', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
@@ -1228,6 +1551,13 @@ function wireEvents() {
   });
 
   $('#clear-files')?.addEventListener('click', async () => {
+    if (!files.length) return;
+    if (!await pcConfirm({
+      title: `Delete all ${files.length} shared file${files.length === 1 ? '' : 's'}?`,
+      body: 'All files in Shared Files will be permanently deleted.',
+      ok: 'Clear Files',
+    })) return;
+    flushPcUndo();
     const r = await fetch('/api/files', { method: 'DELETE' });
     if (r.ok) {
       selectedFiles.clear();
@@ -1238,13 +1568,13 @@ function wireEvents() {
     }
   });
 
-  // Settings controls
+  // Settings controls (unified auto-save with visual confirmation)
   $('#set-autopaste')?.addEventListener('change', e => {
     fetch('/api/autopaste', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ auto: e.target.checked }),
-    });
+    }).then(r => { if (r.ok) showSettingsSaved(); }).catch(() => {});
   });
 
   $('#set-files-inbox')?.addEventListener('change', e => {
@@ -1252,7 +1582,7 @@ function wireEvents() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ on: e.target.checked }),
-    });
+    }).then(r => { if (r.ok) showSettingsSaved(); }).catch(() => {});
   });
 
   let qualitySaveTimer = null;
@@ -1268,7 +1598,7 @@ function wireEvents() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ on, level }),
-      });
+      }).then(r => { if (r.ok) showSettingsSaved(); }).catch(() => {});
     };
     if (immediate) send();
     else qualitySaveTimer = setTimeout(send, 250);
@@ -1281,27 +1611,46 @@ function wireEvents() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ on: e.target.checked }),
-    });
+    }).then(r => { if (r.ok) showSettingsSaved(); }).catch(() => {});
   });
 
-  $('#save-storage-cap')?.addEventListener('click', async () => {
+  let storageCapTimer = null;
+  const saveStorageCap = async () => {
     const capMb = Number($('#set-storage-cap')?.value || 500);
+    if (!Number.isFinite(capMb) || capMb < 50) return;
     const r = await fetch('/api/storage-cap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ capMb }),
     });
-    if (r.ok) { showToast('Updated storage ceiling'); loadStats(); }
+    if (r.ok) {
+      showSettingsSaved();
+      loadStats();
+    }
+  };
+  $('#save-storage-cap')?.addEventListener('click', saveStorageCap);
+  $('#set-storage-cap')?.addEventListener('change', saveStorageCap);
+  $('#set-storage-cap')?.addEventListener('input', () => {
+    clearTimeout(storageCapTimer);
+    storageCapTimer = setTimeout(saveStorageCap, 450);
   });
 
-  $('#save-retention')?.addEventListener('click', async () => {
+  let retentionTimer = null;
+  const saveRetention = async () => {
     const days = Number($('#set-retention')?.value || 0);
+    if (!Number.isFinite(days) || days < 0) return;
     const r = await fetch('/api/retention', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ days }),
     });
-    if (r.ok) showToast('Updated retention policy');
+    if (r.ok) showSettingsSaved();
+  };
+  $('#save-retention')?.addEventListener('click', saveRetention);
+  $('#set-retention')?.addEventListener('change', saveRetention);
+  $('#set-retention')?.addEventListener('input', () => {
+    clearTimeout(retentionTimer);
+    retentionTimer = setTimeout(saveRetention, 450);
   });
 
   $('#save-media-dir')?.addEventListener('click', async () => {
@@ -1312,8 +1661,10 @@ function wireEvents() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: pathVal }),
     });
-    if (r.ok) showToast('Relocated media directory');
-    else {
+    if (r.ok) {
+      showSettingsSaved('Relocated ✓');
+      showToast('Relocated media directory');
+    } else {
       const err = await r.json().catch(() => ({}));
       showToast(err.error || 'Could not relocate media directory');
     }
@@ -1344,6 +1695,10 @@ function wireEvents() {
   // Global keyboard & paste handlers
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
+      if (confirmResolver) {
+        closePcConfirm(false);
+        return;
+      }
       closeAllGlassSelects();
       closeLightbox();
       $('#whats-new-backdrop')?.classList.add('hidden');
@@ -1366,18 +1721,34 @@ function wireEvents() {
     }
   });
 
-  // Drag and drop upload
-  window.addEventListener('dragover', e => {
+  // Full-window drag-and-drop overlay with depth counter (never flickers on child nodes)
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
     e.preventDefault();
+    dragDepth++;
     $('#drop-hint')?.classList.remove('hidden');
   });
+  window.addEventListener('dragover', e => {
+    if (!e.dataTransfer?.types?.includes('Files')) return;
+    e.preventDefault();
+  });
   window.addEventListener('dragleave', e => {
-    if (e.relatedTarget === null) $('#drop-hint')?.classList.add('hidden');
+    e.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0 || e.relatedTarget === null) {
+      dragDepth = 0;
+      $('#drop-hint')?.classList.add('hidden');
+    }
   });
   window.addEventListener('drop', async e => {
     e.preventDefault();
+    dragDepth = 0;
     $('#drop-hint')?.classList.add('hidden');
     const dropped = [...(e.dataTransfer?.files || [])];
+    if (!dropped.length) return;
+    pcTransferTotal = dropped.length;
+    pcTransferDone = 0;
     for (const f of dropped) {
       if (f.type.startsWith('image/')) await uploadPhotoBlob(f, f.name);
       else await uploadPcFile(f);

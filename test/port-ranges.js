@@ -21,13 +21,24 @@ export const PORT_RANGES = {
   config: [9550, 9589],
 };
 
-// A random port within the named suite's inclusive range. Throws on an unknown
-// suite so a typo fails loudly instead of landing on `undefined`.
+const usedInProcess = new Set();
+
+// A random port within the named suite's inclusive range, guaranteed unique
+// within the current process so two servers in one suite never collide.
 export function pickPort(suite) {
   const range = PORT_RANGES[suite];
   if (!range) throw new Error(`unknown test suite port range: ${suite}`);
   const [lo, hi] = range;
-  return lo + Math.floor(Math.random() * (hi - lo + 1));
+  const span = hi - lo + 1;
+  const start = Math.floor(Math.random() * span);
+  for (let i = 0; i < span; i++) {
+    const candidate = lo + ((start + i) % span);
+    if (!usedInProcess.has(candidate)) {
+      usedInProcess.add(candidate);
+      return candidate;
+    }
+  }
+  return lo + start;
 }
 
 // "lo-hi" label for docs/comments.

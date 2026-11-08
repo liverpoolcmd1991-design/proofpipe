@@ -6,16 +6,7 @@ const AP_KEY = 'pp_autopaste';
 let autoPaste = false;
 
 // ---------- universal transfer-quality reduction (server setting) ----------
-// { on: false, level: 80 } until the server answers; cached in localStorage so
-// a fresh page with a sleeping server keeps the last known behavior. The
-// upload() choke point reads these live on every send.
 const QUALITY_KEY = 'pp_quality';
-// maxPixels is the PC's capture accept ceiling, published by GET /api/quality
-// (server/store.js MAX_PIXELS) — NOT a user setting, so it is deliberately not
-// persisted with the other two: what it feeds is the wording of a refusal
-// (tooManyPixelsMsg), and a stale cached limit would put a wrong number in front
-// of the user. It resizes nothing — with the setting off, no limit in this file
-// may change a photo. 0 = not told yet = name no number.
 const settings = { qualityReduce: false, qualityLevel: 80, maxPixels: 0 };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(QUALITY_KEY) || '{}')); } catch {}
 function saveQualityLocal() {
@@ -23,24 +14,6 @@ function saveQualityLocal() {
     qualityReduce: !!settings.qualityReduce, qualityLevel: settings.qualityLevel,
   })); } catch {}
 }
-// encode to JPEG at q (1–100) without exploding memory: the existing
-// createImageBitmap path (see the thumbnail code) scales and re-encodes off
-// the main heap; we reuse that shape here.
-// The only limit this function may apply is the CALLER's explicit choice, never
-// a default — a bare default is exactly how the two callers drifted apart: the
-// HEIC→JPEG conversion (which must run with the quality setting OFF) silently
-// inherited quality reduction's 4096px clamp, costing a 48MP iPhone HEIC 74% of
-// its pixels.
-//   · quality reduction ON  → `maxDim: 4096`: the user asked for smaller files,
-//     and no phone chat consumes more than that anyway.
-//   · HEIC → JPEG (always)  → NO limit at all: it may change the FORMAT, never
-//     the resolution. A photo past the PC's ceiling is refused by the server as
-//     413 "too many pixels" and reported on the phone (tooManyPixelsMsg) — a
-//     loud refusal beats a resize the user never asked for.
-// `force` skips the "only if smaller" guard: that guard is right when the goal
-// is transfer size, but wrong for a FORMAT conversion (HEIC→JPEG), where the
-// point is decodability — and HEIC is routinely smaller than the JPEG it
-// becomes, so the guard would hand the HEIC straight back.
 async function qualityCompress(blob, q, { force = false, maxDim = 0 } = {}) {
   const bmp = await createImageBitmap(blob);
   let c = null;
@@ -52,48 +25,34 @@ async function qualityCompress(blob, q, { force = false, maxDim = 0 } = {}) {
     c.getContext('2d').drawImage(bmp, 0, 0, w, h);
     const out = await new Promise((res, rej) => c.toBlob(
       b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', Math.min(1, Math.max(0.01, q / 100))));
-    // pathological case: re-encode came out LARGER (tiny/flat images at high q)
-    // — sending the original is strictly better
     return (out && (force || out.size < blob.size)) ? out : blob;
   } finally {
     bmp.close && bmp.close();
-    // drop the backing store now instead of waiting for GC: at full sensor
-    // resolution that is hundreds of MB held on a phone for no reason
     if (c) { c.width = 0; c.height = 0; }
   }
 }
 // SSE health for the adaptive poll loop (bottom of file) — true while the
 // /events connection is open; flips off on error so polling speeds back up
 let sseLive = false;
-// Has this page EVER reached the PC since it loaded? Distinguishes "the link
-// dropped" (offline) from "this phone was never paired" (wrong Wi-Fi, or the QR
-// was never scanned). Both used to report "offline", so a first-run user was
-// sent hunting for a Wi-Fi problem when the fix was on the other device.
 let everConnected = false;
 function autoPasteUI() {
   const b = $('#autopaste');
   if (!b) return;
-  // the switch visual is driven purely by aria-checked (CSS) — no label text swap
   b.setAttribute('aria-checked', String(autoPaste));
-  statusDetail(); // the strip mirrors the state, so the setting costs no row
+  statusDetail();
 }
-// An unchanged state skips the DOM write entirely: #status is a live region,
-// so re-writing the same string on every poll tick re-announced it (and
-// dirtied layout for nothing).
 let statusCls = null, statusText = null;
 function setStatus(cls, text) {
-  if (cls === statusCls && text === statusText) return;
+  const strip = $('#status-strip');
+  if (cls === statusCls && text === statusText) {
+    if (strip && !transferActive && strip.dataset.state !== cls) strip.dataset.state = cls;
+    return;
+  }
   statusCls = cls; statusText = text;
   $('#status-dot').className = 'dot ' + cls;
   $('#status').textContent = text;
-  // The strip's TINT is the state, readable peripherally without reading it.
-  // Driven from the same class ladder as the dot, so the two cannot disagree.
-  const strip = $('#status-strip');
-  if (strip) strip.dataset.state = cls;
+  if (strip && !transferActive) strip.dataset.state = cls;
 }
-// The strip's trailing detail — what the app has DONE, not what it is doing.
-// Deliberately not a live region: #status already announces the state, and a
-// count that ticks up on every capture must not be re-announced each time.
 let statusSubText = null;
 function setStatusSub(text) {
   const t = text || '';
@@ -110,23 +69,9 @@ function statusDetail() {
   setStatusSub(parts.join(' · '));
 }
 
-// ---------- transfer progress: the strip's detail line, not a band of its own ----------
-// File sends used to own a separate #file-progress block of .up-row cards. It
-// cost a band of vertical space on the one screen that already runs out —
-// and it was the FIRST thing the keyboard hid (body.kb-open
-// #file-progress{display:none}), so a send in progress simply vanished while
-// the user was typing. The strip's trailing region is already a one-line
-// ellipsized flex item, so progress lives there instead: the same pixels,
-// always visible, and no new row in the layout.
-//
-// It is deliberately NOT a live region: #status announces the connection, and
-// a percent that ticks per byte must not be re-announced every frame. The
-// accessible version of the same fact rides #file-progress, which stays in the
-// DOM off-screen for exactly that purpose.
+// ---------- transfer progress ----------
 let transferTotal = 0, transferDone = 0, transferActive = null;
 function transferBegin(name, total) {
-  // idempotent while a batch is running: two concurrent workers both call this,
-  // and the second must not reset the count the first one set.
   if (!transferTotal) { transferTotal = total || 1; transferDone = 0; }
   transferActive = { name, pct: 0 };
   renderTransferStatus();
@@ -137,6 +82,11 @@ function transferEnd(name) {
   if (transferActive && transferActive.name === name) transferActive = null;
   if (transferDone >= transferTotal) { // batch finished — hand the line back
     transferTotal = 0; transferDone = 0; transferActive = null;
+    const strip = $('#status-strip');
+    if (strip) {
+      strip.dataset.state = statusCls || 'ok';
+      strip.style.setProperty('--xfer-scale', '0');
+    }
     statusDetail();
     return;
   }
@@ -156,7 +106,12 @@ function renderTransferStatus() {
   // string on screen after the batch was done.
   statusSubText = el.textContent;
   const strip = $('#status-strip');
-  if (strip) strip.dataset.state = 'busy';
+  if (strip) {
+    strip.dataset.state = 'busy';
+    const itemFrac = p < 0 ? 0.58 : Math.max(0.08, Math.min(1, p / 100));
+    const scale = Math.max(0.14, Math.min(1, (transferDone + itemFrac) / Math.max(1, transferTotal)));
+    strip.style.setProperty('--xfer-scale', scale.toFixed(3));
+  }
 }
 // How many items the current batch holds. The two-worker pools below each call
 // transferBegin() per item, and every worker sees only its own item — without
@@ -256,8 +211,8 @@ async function upload(blob, opts = {}) {
     } catch {} // compression failed → send the original; a photo must never be lost over a setting
   }
   // HEIC/HEIF: most browsers can't DECODE it, so the PC viewer would show a
-  // broken image and pasted HEIC often lands nowhere. iPhone <input> picks
-  // arrive as JPEG (Safari transcodes), but the ANDROID SHARE-TARGET passes
+  // broken image and pasted HEIC often lands nowhere. Browser <input> picks
+  // arrive as JPEG (when transcoded), but the ANDROID SHARE-TARGET passes
   // the original bytes through. Re-encode to JPEG via canvas when possible;
   // if this browser can't decode HEIC either, send the original anyway — the
   // server stores it, and the 415-no-longer-poisons policy keeps retrying it
@@ -269,7 +224,7 @@ async function upload(blob, opts = {}) {
       // NO size limit of any kind — not maxDim, not maxPixels. This runs with
       // the quality setting OFF too, so the one thing it is entitled to change
       // is the FORMAT; it used to inherit qualityCompress's 4096px clamp
-      // through a bare default, which cost a 48MP iPhone HEIC 74% of its
+      // through a bare default, which cost a 48MP phone HEIC 74% of its
       // pixels. A photo past the PC's ceiling is refused by the server with a
       // message naming the limit and the single switch that fixes it (see
       // tooManyPixelsMsg) — never quietly shrunk to fit.
@@ -1117,7 +1072,7 @@ function dismissSwipeHint() {
   $('#viewer-hint')?.classList.add('hidden');
 }
 // double-tap zoom: toggle 1x ↔ 2.5x centered on the tapped point (the standard
-// gallery affordance — no pinch needed for a quick look)
+// gallery affordance — no pinch needed for a closer view)
 function viewerZoomTo(scale, cx, cy) {
   const r = $('#viewer-stage').getBoundingClientRect();
   const lx = cx - r.left, ly = cy - r.top;
@@ -1688,24 +1643,21 @@ $('#file-input').onchange = e => {
 };
 
 // ---------- transferred files (BOTH directions): chips + Save/Open sheet ----------
-// The phone lists what the PC sent it AND what it sent the PC — the same rows the
-// harness's Transfers tab shows, so either side can clean up from either device.
 const xferFiles = []; // { id, name, bytes, mime, dir, created_at }
 function fmtFb(b) {
   if (b == null) return '';
   if (b > 1048576) return (b / 1048576).toFixed(1) + ' MB';
   if (b >= 1024) return Math.round(b / 1024) + ' KB';
-  return b + ' B'; // small files must never read "0 KB"
+  return b + ' B';
 }
-// chip arrival time as local HH:MM, or '' when the row has no usable stamp
+function chipTimestamp(s) {
+  const d = s ? new Date(String(s).replace(' ', 'T') + 'Z') : null;
+  return d && !isNaN(d) ? d.getTime() : 0;
+}
 function chipHHMM(sql) {
-  const d = sql ? new Date(sql.replace(' ', 'T') + 'Z') : null;
-  return d && !isNaN(d)
-    ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
+  const ts = chipTimestamp(sql);
+  return ts ? new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
 }
-// A freshly built chip pops in. The class is dropped on a timer (and again if a
-// swipe takes over the element) so the strip's reconcile pass — which re-inserts
-// EXISTING nodes — can never replay the entrance for a row that was already there.
 function markChipNew(el) {
   el.classList.add('chip-new');
   setTimeout(() => el.classList.remove('chip-new'), 240);
@@ -1715,8 +1667,6 @@ function fileChip(f) {
   chip.className = 'file-chip';
   chip.dataset.id = String(f.id);
   const fromPc = f.dir !== 'phone';
-  // the same 42px leading visual a PC-sent capture card uses — here it carries
-  // the file kind, there the thumbnail. Same size, same radius, same slot.
   const thumb = document.createElement('span');
   thumb.className = 'f-thumb ' + (fromPc ? 'pc' : 'phone');
   thumb.setAttribute('aria-hidden', 'true');
@@ -1727,11 +1677,9 @@ function fileChip(f) {
   meta.className = 'f-meta';
   const nm = document.createElement('div');
   nm.className = 'f-name';
-  nm.textContent = f.name; // textContent — never interpolate server strings
+  nm.textContent = f.name;
   const sub = document.createElement('div');
   sub.className = 'f-sub';
-  // size AND when: the capture card one lane up shows a time, so the file card
-  // does too (it used to show size only, which read as a different component)
   const when = chipHHMM(f.created_at);
   sub.textContent = when ? `${fmtFb(f.bytes)} · ${when}` : fmtFb(f.bytes);
   meta.append(nm, sub);
@@ -1741,38 +1689,22 @@ function fileChip(f) {
   const badgeIc = document.createElement('i');
   badgeIc.className = `ic ${fromPc ? 'ic-pc' : 'ic-phone'}`;
   badgeIc.setAttribute('aria-hidden', 'true');
-  // icon AND label — the capture card one lane up puts the same badge in the same
-  // trailing slot for the same meaning, and rendered it as the text "PC" with no
-  // glyph while this one was a bare glyph with no text.
   badge.append(badgeIc, document.createTextNode(fromPc ? 'PC' : 'Phone'));
   chip.append(thumb, meta, badge);
   chip.onclick = () => openFileSheet(f);
-  // same role/tabindex/Enter handling as the tiles and text chips — without it
-  // the row was a bare div: unreachable by keyboard, and its swipe-to-delete
-  // had no key equivalent (Delete/Backspace is wired by attachChipSwipe).
   chipA11y(chip, `${fromPc ? 'File from your PC' : 'File sent to your PC'}: ${f.name} — open actions`);
-  // files get the same swipe-down-to-delete gesture as the text/image chips
-  // (it deletes the file on the server, so it leaves the PC too)
   attachChipSwipe(chip, {
     msg: `Removed “${f.name}”`,
     perform: () => deleteServerFile(f),
     lane: '#files',
     chipSel: '.file-chip',
   });
-  // sort key: the file's own name, and its server timestamp (parsed the same
-  // UTC→local way the visible time is, so the order and the labels agree)
   stampSort(chip, { ts: chipTimestamp(f.created_at), name: f.name });
   markChipNew(chip);
   return chip;
 }
-// `created_at` is stored UTC; the chip labels it in local time. Sorting must use
-// the SAME instant the label shows, so both go through one parser.
-function chipTimestamp(s) {
-  const d = s ? new Date(String(s).replace(' ', 'T') + 'Z') : null;
-  return d && !isNaN(d) ? d.getTime() : 0;
-}
-let filesVersion = -1; // skip the refetch+re-render when nothing changed
-let filesBefore = null; // keyset cursor for the next older phone page
+let filesVersion = -1;
+let filesBefore = null;
 let filesMoreAvailable = false;
 let filesLoadBusy = false;
 function updateFilesLoadMore() {
@@ -1783,15 +1715,12 @@ function updateFilesLoadMore() {
   more.textContent = filesLoadBusy ? 'Loading older transfers…' : 'Load older transfers';
 }
 async function loadFiles(force = false, older = false) {
-  // a gesture or an open undo window owns this lane — refetch once it clears
   if (chipSwiping || undoIsFile()) { filesDirty = true; return; }
   if (filesLoadBusy || (older && filesBefore === null)) return;
   filesLoadBusy = true;
   updateFilesLoadMore();
   try {
     if (!older) {
-      // version check first: the 10s tick called this even with zero changes —
-      // a fingerprint round-trip is far cheaper than a full list fetch + re-render
       const v = await fetch(`${SERVER}/api/files/version`, { signal: AbortSignal.timeout(3000) }).then(r => r.ok ? r.json() : null);
       if (!force && v && v.latest === filesVersion) return;
       if (v) filesVersion = v.latest;
@@ -1807,12 +1736,12 @@ async function loadFiles(force = false, older = false) {
       const have = new Set(xferFiles.map(f => f.id));
       renderFiles(xferFiles.concat(list.filter(f => !have.has(f.id))));
     } else {
-      filesBefore = null; // a fresh sync starts a new cursor chain
-      renderFiles(list); // both directions — the badge says which way each went
+      filesBefore = null;
+      renderFiles(list);
     }
     filesBefore = list.length ? list[list.length - 1].id : filesBefore;
     filesMoreAvailable = list.length === 20;
-  } catch { /* backend not ready or offline — chips just stay hidden */ }
+  } catch {}
   finally {
     filesLoadBusy = false;
     updateFilesLoadMore();
@@ -1821,60 +1750,39 @@ async function loadFiles(force = false, older = false) {
 $('#files-load-more').onclick = () => loadFiles(false, true);
 function renderFiles(list) {
   const box = $('#files');
-  // Reconcile by id instead of innerHTML='' + rebuilding every chip and its
-  // swipe/keyboard listeners. File SSE/poll updates normally add/remove one
-  // row; preserving existing nodes keeps gestures stable and makes the lane
-  // cheap even when a batch arrives.
   const incoming = new Map(list.map(f => [String(f.id), f]));
+  const existing = new Map();
   for (const child of [...box.children]) {
-    if (child.classList.contains('file-chip') && !incoming.has(child.dataset.id)) child.remove();
+    if (!child.classList.contains('file-chip')) continue;
+    if (!incoming.has(child.dataset.id)) child.remove();
+    else existing.set(child.dataset.id, child);
   }
   let cursor = box.firstElementChild;
   for (const f of list) {
     const id = String(f.id);
-    let chip = [...box.children].find(el => el.classList.contains('file-chip') && el.dataset.id === id);
-    if (!chip) chip = fileChip(f);
+    const chip = existing.get(id) || fileChip(f);
     if (chip !== cursor) box.insertBefore(chip, cursor);
     cursor = chip.nextElementSibling;
   }
   box.classList.toggle('hidden', !list.length);
-  // the loop above lays the strip out in server order (newest-first); a chosen
-  // "Oldest"/"Name" order is re-imposed here so every render agrees
   if (sortMode !== 'new') applySort(box);
-  // the lane's ONE gesture tip is driven by updateInbox() — it watches BOTH
-  // strips, so neither loader owns it (they used to each show their own copy of
-  // the same sentence, gated by the same flag)
   xferFiles.length = 0;
   xferFiles.push(...list);
 }
 
-// The unified "from your PC" lane is shown only while it actually holds a chip.
-// Observing the two sub-lanes keeps this correct whichever path adds or removes
-// one (SSE, poll, swipe-delete, clear) — before, each lane reserved an invisible
-// 78px slot so the recent grid never moved, which showed as two empty bands.
 function updateInbox() {
   const box = $('#inbox'), ti = $('#text-in'), fl = $('#files');
-  if (!box || !ti || !fl) return; // older cached shell without the unified lane
+  if (!box || !ti || !fl) return;
   const hasText = !ti.classList.contains('hidden') && ti.childElementCount > 0;
   const hasFiles = !fl.classList.contains('hidden') && fl.childElementCount > 0;
   box.classList.toggle('hidden', !(hasText || hasFiles));
-  // ONE tip for ONE gesture, owned here because this is the only place that sees
-  // both strips. It used to be two elements driven by two loaders off the same
-  // flag, so a lane holding texts AND files printed the sentence twice.
   const hint = $('#chip-hint');
   if (hint) {
     hint.classList.toggle('hidden',
       localStorage.pp_chip_hint === '1' || !(hasText || hasFiles));
   }
-  syncStripEdges(); // row counts just changed: re-decide which edges have more
+  syncStripEdges();
 }
-// ---------- the strips' edge fade, per edge ----------
-// A fade belongs only on an edge with content past it. Applied unconditionally
-// (the old single mask-image), a strip parked at its start ran its first chip
-// through the 0→14px transparent ramp — that chip's left border was simply not
-// drawn — and a strip that did not overflow at all faded both ends for nothing.
-// The mask itself is CSS; this only sets --fade-l / --fade-r via .at-start /
-// .at-end (see the strip block in phone.css).
 const stripEdgeSyncs = [];
 function trackStripEdges(el) {
   if (!el) return;
@@ -1884,8 +1792,6 @@ function trackStripEdges(el) {
     el.classList.toggle('at-end', max <= 1 || el.scrollLeft >= max - 1);
   };
   el.addEventListener('scroll', sync, { passive: true });
-  // clientWidth moves with the viewport (rotation, keyboard) and scrollWidth
-  // with the row count, so both sides need a re-measure
   if ('ResizeObserver' in window) new ResizeObserver(sync).observe(el);
   stripEdgeSyncs.push(sync);
   sync();
@@ -2429,12 +2335,7 @@ function buildTextChip(t, seenFiles) {
   d.dataset.id = t.id != null ? String(t.id) : '';
   const when = document.createElement('span');
   when.className = 'chip-when';
-  // server stores UTC — show the viewer's LOCAL time, not the raw UTC slice
-  const dt = t.created_at ? new Date(t.created_at.replace(' ', 'T') + 'Z') : null;
-  when.textContent = dt && !isNaN(dt)
-    ? dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
-  // PC-sent capture → IMAGE chip with a PC badge; tap previews it in the
-  // in-app viewer (full-res, same tab)
+  when.textContent = chipHHMM(t.created_at);
   const media = t.body.match(/^https?:\/\/[^/]+\/media\/([^/?#]+)$/i);
   if (media && !seenFiles.has(media[1])) {
     seenFiles.add(media[1]);
@@ -2448,8 +2349,6 @@ function buildTextChip(t, seenFiles) {
     img.src = thumbUrl();
     let thumbTries = 0;
     img.onerror = () => {
-      // same window as the grid tile (see addRemoteRecent): staggered, capped at
-      // 5s, and long enough to outlive a rate-limited thumbnail write queue
       if (thumbTries < 12) {
         thumbTries++;
         setTimeout(() => { img.src = thumbUrl(); }, Math.min(5000, 400 * thumbTries));
@@ -2458,9 +2357,6 @@ function buildTextChip(t, seenFiles) {
       const ph = document.createElement('span');
       ph.className = 'chip-thumb-missing'; img.replaceWith(ph);
     };
-    // the card anatomy the file chips use: thumb · meta(title + sub) · badge.
-    // The time becomes the second line instead of an inline tail — as an inline
-    // tail it sat on the image's text baseline and dragged the badge with it.
     const meta = document.createElement('span');
     meta.className = 'chip-meta';
     const title = document.createElement('span');
@@ -2469,12 +2365,8 @@ function buildTextChip(t, seenFiles) {
     when.className = 'chip-sub';
     meta.append(title, when);
     const badge = document.createElement('span');
-    // PC = blue (DESIGN.md §1 direction identity). This badge was accent green,
-    // i.e. it read "from this phone" on a capture that came from the PC.
     badge.className = 'chip-badge pc';
     badge.title = 'Sent from your PC';
-    // the same icon + label the file card's badge carries (see fileChip): one
-    // direction, one rendering, whichever lane it is in
     const badgeIc = document.createElement('i');
     badgeIc.className = 'ic ic-pc';
     badgeIc.setAttribute('aria-hidden', 'true');
@@ -2484,38 +2376,28 @@ function buildTextChip(t, seenFiles) {
     d.append(img, meta, badge);
     d.onclick = () => openViewerRemote(item);
   } else if (media) {
-    return null; // duplicate of a capture already shown in this batch
+    return null;
   } else {
     const body = document.createElement('span');
     body.textContent = t.body;
-    // other URLs OPEN on tap (long-press to copy); plain texts copy on tap
     if (/^https?:\/\/\S+$/i.test(t.body)) {
       body.classList.add('chip-url');
       d.title = 'Tap to open · long-press to copy';
       chipA11y(d, `Link from PC: ${t.body} — open`);
       d.onclick = () => { flash('Opening…'); window.open(t.body, '_blank', 'noopener'); };
     } else {
-      // the chip is a one-line ellipsized pill BY DESIGN (it shares an axis with
-      // the 58px cards, and the lane's swipe travel window must not grow), so the
-      // full text has to be reachable another way: it goes in the tooltip and in
-      // the accessible name — which is also what lets a screen reader read a
-      // message that used to be copy-only
       d.title = `Tap to copy — ${t.body}`;
       chipA11y(d, `Text from PC: ${t.body} — copy`);
       d.onclick = () => tapCopyText(t.body, d);
     }
     d.append(body, when);
   }
-  // a PC-sent capture is not a "text": the card's own label says Capture, and the
-  // undo pill that follows the swipe has to agree with it
   if (t.id != null) attachChipSwipe(d, {
     msg: d.classList.contains('media-chip') ? 'Capture removed' : 'Text removed',
     perform: () => deletePcText(t.id),
   });
-  // sort key: an image chip sorts by its FILE name (that is what "Name" means
-  // for a capture), a text chip by its body
   stampSort(d, {
-    ts: dt && !isNaN(dt) ? dt.getTime() : 0,
+    ts: chipTimestamp(t.created_at),
     name: media ? decodeURIComponent(media[1]) : t.body,
     seq: t.id,
   });
@@ -2598,32 +2480,12 @@ for (const btn of document.querySelectorAll('.sort-opt')) {
 }
 sortUI();
 async function loadTexts() {
-  // never rebuild the strip under an active delete gesture — flag it and let
-  // the gesture's end reload (an incoming text used to be dropped until the
-  // next poll tick)
   if (chipSwiping || (undoPending && undoPending.lane === '#text-in')) { textsDirty = true; return; }
   try {
-    // The strip scrolls sideways now, so the old 5-of-10 cap was the whole bug:
-    // a phone screen fits roughly ONE 248px card, so "5 rows" looked like "1 row"
-    // with no way to reach the rest. Show a full page of 20 (of the 50 the API
-    // returns) and let the strip scroll; "show older" still reveals the rest.
     const SHOW = 20;
-    // timeout like every other fetch in this file — a hung server connection
-    // used to leave a dangling promise per poll tick
     const list = await fetch(`${SERVER}/api/text?source=pc&limit=50`, { signal: AbortSignal.timeout(5000) }).then(r => r.json());
     const box = $('#text-in');
     const shown = box.dataset.all === '1' ? list : list.slice(0, SHOW);
-    // "more rows" is a static row under the strip (phone.html), refreshed here
-    // BEFORE the early-return: a matching signature means the chips did not
-    // change, and the control that belongs to them did not change with them.
-    // It used to be an item built INSIDE the strip, so on a lane with 7 rows it
-    // sat 1,164px past the first chip — reachable only by scrolling the strip to
-    // its end, where the edge fade ate it — while the files lane's equivalent
-    // was an always-visible centred row. One lane, one control, one place.
-    // No count in the label: it used to read "show older (3)" off the raw row
-    // count, but duplicate sends of one capture are suppressed at render time,
-    // so it could promise three and reveal one. The files lane's row carries no
-    // count either — the two now read the same way.
     const older = list.length - SHOW;
     const more = $('#text-load-more');
     if (more) more.classList.toggle('hidden', !(older > 0 && box.dataset.all !== '1'));
@@ -2633,18 +2495,14 @@ async function loadTexts() {
     if (!list.length) {
       box.replaceChildren();
       box.classList.add('hidden');
-      return; // updateInbox() retires the gesture tip off the class change
+      return;
     }
     box.classList.remove('hidden');
-    // Reconcile by stable row key. Existing chips keep their listeners, swipe
-    // state and focus; only new/changed rows are constructed, and rows that
-    // disappeared are removed. This avoids tearing down the whole lane on every
-    // SSE text event while preserving the duplicate-media suppression rule.
     const existing = new Map([...box.querySelectorAll('.text-chip')]
       .map(el => [el.dataset.renderKey || el.dataset.id, el]));
     const desired = [];
     const keep = new Set();
-    const seenFiles = new Set(); // dedupe duplicate sends of the same capture
+    const seenFiles = new Set();
     for (const t of shown) {
       const renderKey = `${t.id}|${t.body}|${t.created_at || ''}`;
       let d = existing.get(renderKey);
@@ -2653,8 +2511,6 @@ async function loadTexts() {
         if (seenFiles.has(media[1])) continue;
         const file = decodeURIComponent(media[1]);
         if (deadPcMedia.has(file)) { seenFiles.add(media[1]); continue; }
-        // A reused media chip must still participate in this batch's duplicate
-        // check; a new chip lets buildTextChip register the file itself.
         if (d) seenFiles.add(media[1]);
       }
       if (!d) d = buildTextChip(t, seenFiles);
@@ -2664,20 +2520,10 @@ async function loadTexts() {
       keep.add(d);
     }
     for (const child of existing.values()) if (!keep.has(child)) child.remove();
-    // the API hands the strip newest-first; any other order is restored here so
-    // a live arrival does not land in the wrong place
     if (sortMode !== 'new') desired.sort(sortComparator);
     box.replaceChildren(...desired);
   } catch { textRenderSignature = ''; $('#text-in').classList.add('hidden'); $('#text-load-more')?.classList.add('hidden'); }
 }
-// "show older" reveals the rest of the capped /api/text page (5 shown of 10).
-// It lives in phone.html as a row under the strip, so it is wired once here
-// instead of being rebuilt — and re-losing its listener — on every render.
-// Guarded, not assumed: the shell is served network-first with the cache as the
-// offline fallback, so a stale cached phone.html can pair with THIS phone.js
-// (asset URLs are content-hashed and the server answers any ?v= with the current
-// bytes) — exactly the "older cached shell" updateInbox() already tolerates. An
-// unguarded `.onclick` on a missing node would throw and kill the whole boot.
 const textLoadMore = $('#text-load-more');
 if (textLoadMore) textLoadMore.onclick = () => {
   $('#text-in').dataset.all = '1';
@@ -2694,18 +2540,55 @@ async function sendText() {
       signal: AbortSignal.timeout(5000),
     });
     if (!r.ok) throw 0;
-    $('#text-input').value = '';
-    autoGrowText(); // shrink back to one line — the field keeps its grown height
+    resetComposerField();
     flash('Sent to PC ✓');
   } catch {
     // queue it like photos — it will go out when the connection returns
     const q = textQueue();
     q.push({ body, ts: Date.now() });
     setTextQueue(q);
-    $('#text-input').value = '';
-    autoGrowText();
+    resetComposerField();
     flash('Offline — text queued, sends automatically');
   }
+}
+function syncComposerState() {
+  const input = $('#text-input');
+  const row = document.querySelector('.text-row');
+  if (row && input) row.classList.toggle('has-text', input.value.trim().length > 0);
+}
+const textModeBtn = $('#text-mode-btn');
+const textModeClose = $('#text-mode-close');
+function setTextMode(open) {
+  document.body.classList.toggle('text-mode', open);
+  textModeBtn?.setAttribute('aria-expanded', String(open));
+  const input = $('#text-input');
+  if (open) {
+    if (moreMenu.classList.contains('open')) setMenu(false);
+    if (input) {
+      input.style.height = '';
+      requestAnimationFrame(() => input.focus());
+    }
+  } else if (input) {
+    input.blur();
+  }
+  syncOverlayHistory();
+}
+if (textModeBtn) {
+  textModeBtn.onclick = () => setTextMode(!document.body.classList.contains('text-mode'));
+}
+if (textModeClose) {
+  textModeClose.onclick = () => setTextMode(false);
+}
+function resetComposerField() {
+  const input = $('#text-input');
+  input.value = '';
+  if (input.classList.contains('expanded')) {
+    input.classList.remove('expanded');
+    $('#text-expand')?.setAttribute('aria-expanded', 'false');
+  }
+  syncComposerState();
+  autoGrowText(); // shrink back to one line — the field keeps its grown height
+  if (document.body.classList.contains('text-mode')) setTextMode(false);
 }
 $('#text-send').onclick = sendText;
 $('#text-input').addEventListener('keydown', e => {
@@ -2713,6 +2596,7 @@ $('#text-input').addEventListener('keydown', e => {
   // it shipped a half-composed string (any CJK/IME keyboard) and cleared the
   // field mid-word.
   if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendText(); return; }
   if (e.key === 'Enter' && !e.shiftKey && $('#text-input').classList.contains('expanded')) return; // expanded: Enter = newline
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
 });
@@ -2730,7 +2614,7 @@ function autoGrowText() {
     const input = $('#text-input');
     // with the soft keyboard up the CSS gives the field the whole panel — an
     // inline height would out-specify it and freeze the field at 150px
-    if (document.body.classList.contains('kb-open')) { input.style.height = ''; return; }
+    if (document.body.classList.contains('kb-open') || document.body.classList.contains('text-mode')) { input.style.height = ''; return; }
     input.style.height = 'auto';
     input.style.height = Math.min(TEXT_AUTOGROW_MAX, Math.max(40, input.scrollHeight)) + 'px';
   });
@@ -2752,6 +2636,7 @@ $('#text-expand').onclick = () => {
   if (expanded) input.focus();
 };
 $('#text-input').addEventListener('input', () => {
+  syncComposerState();
   // expanded holds the ceiling, so growing it would collapse it back to 40px
   if ($('#text-input').classList.contains('expanded')) return;
   autoGrowText();
@@ -2809,15 +2694,6 @@ $('#autopaste').onclick = async () => {
 };
 
 // ---------- auto-cleanup toggle (same server flag as the PC; syncs via SSE) ----------
-async function loadAutoCleanup() {
-  try {
-    const r = await fetch(`${SERVER}/api/autocleanup`, { signal: AbortSignal.timeout(3000) });
-    if (!r.ok) return;
-    const s = await r.json();
-    $('#autocleanup').setAttribute('aria-checked', String(s.on === true));
-    if (s.cap) $('#autocleanup-sub').textContent = `drops oldest captures past 80% of ${fmtBytes(s.cap)}`;
-  } catch {}
-}
 $('#autocleanup').onclick = async () => {
   const b = $('#autocleanup');
   const next = b.getAttribute('aria-checked') !== 'true';
@@ -2833,7 +2709,7 @@ $('#autocleanup').onclick = async () => {
     flash(next ? 'Auto-cleanup on — oldest drop at 80%' : 'Auto-cleanup off');
   } catch {
     flash('Could not save — check the connection');
-    loadAutoCleanup();
+    loadSettings();
   }
 };
 
@@ -2999,6 +2875,11 @@ document.addEventListener('keydown', e => {
   if (moreMenu.classList.contains('open')) {
     setMenu(false);
     moreBtn.focus(); // keyboard dismiss returns focus to the trigger
+    return;
+  }
+  if (document.body.classList.contains('text-mode')) {
+    setTextMode(false);
+    textModeBtn?.focus();
   }
 });
 // picking an action closes the menu; the auto-cleanup switch stays open so
@@ -3016,6 +2897,7 @@ function overlayOpen() {
   return confirmOpen()
     || !$('#viewer').classList.contains('hidden')
     || !$('#file-sheet').classList.contains('hidden')
+    || document.body.classList.contains('text-mode')
     || moreMenu.classList.contains('open');
 }
 function closeTopOverlay() {
@@ -3024,6 +2906,7 @@ function closeTopOverlay() {
   if (confirmOpen()) { closeConfirm(false); return; }
   if (!$('#viewer').classList.contains('hidden')) { hideViewer(); return; }
   if (!$('#file-sheet').classList.contains('hidden')) { closeFileSheet(); return; }
+  if (document.body.classList.contains('text-mode')) { setTextMode(false); return; }
   if (moreMenu.classList.contains('open')) setMenu(false);
 }
 let overlayGuardBusy = false; // history.back() lands asynchronously — don't consume twice
@@ -3049,12 +2932,7 @@ addEventListener('popstate', () => {
   // else: the guard entry was just consumed, or there was never one — let Back exit
 });
 
-// ---------- PWA install nudge: retired ----------
-// The dedicated install button was removed. The PWA is still installable via
-// the browser's own menu; no in-page nudge is shown anymore.
-
 // ---------- recent grid empty state ----------
-// bytes → compact human size ('3.2 MB', '1.1 GB')
 function fmtBytes(n) {
   if (!Number.isFinite(n) || n <= 0) return '0 B';
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -3231,7 +3109,7 @@ $('#outbox-info').onclick = async () => {
   // compared vv.height to window.innerHeight — but the viewport meta sets
   // interactive-widget=resizes-content, so Chrome Android shrinks
   // window.innerHeight along with it, the ratio stayed ~1, and this swap never
-  // engaged there (iOS Safari ignores that meta, which is why it worked there).
+  // engaged there (mobile WebKit ignores that meta, which is why it worked there).
   // Baseline against the height seen while NO text field is focused instead.
   let baseline = vv.height;
   let rebaseline = 0;

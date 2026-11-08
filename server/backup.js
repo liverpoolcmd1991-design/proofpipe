@@ -19,17 +19,9 @@ export function registerBackup(app, ctx) {
     const ip = String(req.ip || '').replace(/^::ffff:/, '');
     if (ip !== '127.0.0.1' && ip !== '::1') return reply.code(403).send({ error: 'available from this PC only' });
     if (backupRunning) return reply.code(409).send({ error: 'a backup is already running' });
-    // reject empty BEFORE resolve: path.resolve('') silently returns the
-    // server's CWD — an absolute, writable dir — which would drop a backup zip
-    // into the repo folder instead of failing
     const raw = String((req.body || {}).dir || '').trim();
     if (!raw) return reply.code(400).send({ error: 'an absolute destination folder is required' });
-    // path.resolve() always yields an absolute path, so the old
-    // `if (!path.isAbsolute(dir))` here was dead code — the real guard is the
-    // empty-string check above (path.resolve('') would silently mean the CWD).
     const dir = path.resolve(raw);
-    // destination must already exist and be writable — no creating folders the
-    // user didn't ask for, no partial backups into a typo'd path
     let probeFile = '';
     try {
       const st = await fsp.stat(dir);
@@ -40,8 +32,6 @@ export function registerBackup(app, ctx) {
     } catch {
       return reply.code(400).send({ error: 'destination folder is not writable' });
     }
-    // 0) platform gate FIRST: it used to sit after the checkpoint + staging,
-    // so a non-Windows run did all the copy work and THEN said "Windows only".
     if (process.platform !== 'win32') return reply.code(400).send({ error: 'Windows only (PowerShell Compress-Archive)' });
     backupRunning = true;
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
@@ -49,12 +39,8 @@ export function registerBackup(app, ctx) {
     const stage = path.join(dir, `.pp-stage-${stamp}`);
     try {
       await fsp.mkdir(stage, { recursive: true });
-      // 1+2) checkpoint the WAL so proofpipe.db is self-contained (all WAL
-      // frames folded in); the DB + WAL copy happens INSIDE one exclusive
-      // better-sqlite3 transaction: the copy is synchronous, so no other
-      // connection can write between the checkpoint and the file copy — an
-      // upload landing in that gap used to live only in the WAL and silently
-      // miss the backup.
+      // Checkpoint the WAL and copy DB files inside one immediate transaction
+      // so concurrent writes cannot interleave between checkpoint and copy.
       ctx.db.transaction(() => {
         ctx.db.pragma('wal_checkpoint(TRUNCATE)');
         try { fs.copyFileSync(path.join(DATA, 'proofpipe.db'), path.join(stage, 'proofpipe.db')); }
@@ -62,13 +48,8 @@ export function registerBackup(app, ctx) {
         try { fs.copyFileSync(path.join(DATA, 'proofpipe.db-wal'), path.join(stage, 'proofpipe.db-wal')); } catch {}
         try { fs.copyFileSync(path.join(DATA, 'proofpipe.db-shm'), path.join(stage, 'proofpipe.db-shm')); } catch {}
       })();
-      // 3) stage the rest: settings + the three media dirs (live locations,
-      // whatever mediaBase is). Copy (not move) — the live state is untouched.
       try { await fsp.copyFile(SETTINGS_FILE, path.join(stage, path.basename(SETTINGS_FILE))); } catch {}
       const cur = currentMediaBase();
-      // chunked copy (same 64-in-flight discipline as the boot sweep): the old
-      // serial `await fsp.copyFile` per entry meant a 2 000-file library issued
-      // 2 000 sequential copies before compression even started.
       const CHUNK = 64;
       for (const [label, srcDir] of [['captures', cur.captures], ['files', cur.files], ['inbox', cur.inbox]]) {
         let entries = [];

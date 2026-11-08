@@ -18,9 +18,16 @@
        makes a state change legible peripherally; an 8px dot never could. -->
   <div class="capture-bar">
     <div class="status-strip" id="status-strip" data-state="warn">
+      <div class="status-wave" id="status-wave" aria-hidden="true">
+        <div class="status-wave-fill" id="status-wave-fill">
+          <span class="status-wave-crest"></span>
+          <span class="status-wave-swell"></span>
+        </div>
+      </div>
       <span class="dot" id="status-dot"></span>
       <span class="ss-main" id="status" role="status">connecting…</span>
       <span class="ss-sub" id="status-sub"></span>
+      <button id="text-mode-btn" type="button" title="Compose text to PC" aria-label="Compose text to PC" aria-expanded="false"><i class="ic ic-mail"></i><span>Text</span></button>
       <div class="more-wrap">
         <button id="more-btn" aria-expanded="false" aria-controls="more-menu" aria-label="More options"><i class="ic ic-more"></i></button>
         <div id="more-menu" role="group" aria-label="More options">
@@ -96,15 +103,18 @@
     </div>
   </div>
 
-  <!-- the composer sits ABOVE the PC-sent lane: sending is the primary text
-       action, and it used to be buried between the two received-content lanes -->
-  <div class="text-row">
+  <!-- Minimal full-screen Liquid Glass text editing window, toggled from #text-mode-btn in #status-strip -->
+  <div class="text-row" id="text-modal" role="dialog" aria-modal="true" aria-label="Send text to PC">
+    <div class="text-modal-bar">
+      <button type="button" id="text-mode-close" class="cbtn text-modal-cancel" aria-label="Close text composer">Cancel</button>
+      <span class="text-modal-title">Send Text to PC</span>
+      <button id="text-send" class="alt-btn send" title="Send to PC" aria-label="Send text to PC"><i class="ic ic-send"></i></button>
+    </div>
     <div class="text-box">
-      <textarea id="text-input" rows="1" placeholder="send text to PC…" autocomplete="off"
+      <textarea id="text-input" rows="1" placeholder="Type or paste text, links, or notes to send to your PC…" autocomplete="off"
                 aria-label="Text to send to PC" enterkeyhint="send"></textarea>
       <button id="text-expand" aria-label="Expand text editor" aria-expanded="false"><i class="ic ic-chev-up"></i></button>
     </div>
-    <button id="text-send" class="alt-btn send" title="Send to PC" aria-label="Send text to PC"><i class="ic ic-send"></i></button>
   </div>
   <div id="text-queued" class="muted hidden" aria-live="polite"></div>
   <div id="file-queued" class="muted hidden" aria-live="polite"></div>

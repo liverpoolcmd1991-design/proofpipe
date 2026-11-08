@@ -1,190 +1,186 @@
-/* Surfaces stack --bg → --card → --card2 and the steps are MEASURED, not
-   eyeballed. The old set sat 1.07–1.16:1 apart, so a card on the page was a
-   visual no-op and every shape was carried by a 1.37:1 border — the screen read
-   as near-identical grey rectangles and no element could look primary.
-   Two border tokens now, because WCAG 1.4.11 applies to CONTROLS, not hairlines:
-   --ctl outlines anything tappable, --border stays on passive dividers. --ctl is
-   #6e757c rather than the first value that cleared 3:1 on the page (#5c636a):
-   a control whose FILL is --card (every .alt-btn) needs the outline to clear 3:1
-   against the fill as well, and only ≥#6e757c does that on all three surfaces
-   (4.11:1 on --bg, 3.55:1 on --card, 3.13:1 on --card2).
-   Text contrast was already fine (6.0–15.6:1) and is unchanged except --muted,
-   which gains headroom for the 11–12px tier. */
 :root {
-  /* same darkened palette as the harness (public/style.css) — the two UIs share
-     one design system, so they share its surfaces and its one inverted fill */
-  --bg:#08090a; --card:#131518; --card2:#1a1d20;
+  --bg:#060913; --card:rgba(20, 26, 42, 0.62); --card2:rgba(30, 38, 60, 0.58);
   --border:#2b2f33; --ctl:#6e757c;
-  --text:#d6d8d5; --muted:#9b9ea0;
-  --inv:#e4e7e3; --inv-fg:#0b0c0d;
-  --accent:#22c55e; --danger:#ef4444;
-  /* the status strip's data-state tints, one pair per state. --tint-busy is a
-     transfer in flight: progress is work, not a fault, so it must NOT borrow
-     the amber warn tint ("reconnecting…") and read as an error. */
-  --tint-busy:#151a2e; --tint-busy-bd:rgba(96,165,250,.36);
+  --glass-border:rgba(255, 255, 255, 0.14);
+  --glass-highlight:inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --spring:cubic-bezier(0.22, 1, 0.36, 1);
+  --text:#f5f7ff; --muted:#98a2b8;
+  --inv:#f5f7ff; --inv-fg:#070a12;
+  --accent:#30d158; --danger:#ff453a;
+  --tint-busy:rgba(16, 30, 62, 0.72); --tint-busy-bd:rgba(96, 165, 250, 0.48);
 }
 * { box-sizing:border-box; }
 html, body { height:100%; }
 body {
-  margin:0; background:var(--bg); color:var(--text);
-  font:16px/1.4 system-ui,sans-serif; -webkit-tap-highlight-color:transparent;
+  margin:0;
+  background-color:var(--bg);
+  background-image:
+    radial-gradient(ellipse 95% 50% at 18% -8%, rgba(10, 132, 255, 0.22), transparent 62%),
+    radial-gradient(ellipse 85% 48% at 85% 12%, rgba(94, 92, 230, 0.16), transparent 60%),
+    radial-gradient(ellipse 90% 45% at 50% 108%, rgba(48, 209, 88, 0.14), transparent 62%);
+  color:var(--text);
+  font:16px/1.4 -apple-system, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, sans-serif;
+  letter-spacing:-0.011em;
+  -webkit-font-smoothing:antialiased;
+  -webkit-tap-highlight-color:transparent;
   overflow:hidden; overscroll-behavior:none; touch-action:pan-y;
-  /* the page is an APP, not a document: long-pressing a tile, a chip or the
-     status bar must not start a text selection (or pop the iOS copy callout)
-     over controls that have their own gestures. Text ENTRY opts back in, and
-     so do link chips — see the rule below. */
   user-select:none; -webkit-user-select:none;
 }
-/* text ENTRY stays selectable, and so do link chips from the PC: those are
-   copied by long-pressing the link itself (the only copy affordance for a URL —
-   plain texts copy on tap, which user-select:none does not affect).
-   .chip-manual is added by phone.js when BOTH copy paths are blocked — unlocking
-   just that chip is what makes the manual long-press it advertises possible. */
 input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
   user-select:text; -webkit-user-select:text;
 }
-/* Exactly one viewport tall. The overflow safety net matters: with both PC-sent
-   lanes taking chips, an upload burst in flight and the composer open on a short
-   or landscape screen, the fixed chrome can exceed the viewport — and with
-   body{overflow:hidden} the capture grid below it was simply unreachable. It
-   only activates when the content genuinely does not fit (nothing scrolls when
-   it does), and inner lanes keep their own overscroll. */
 .wrap {
   height:100dvh; max-width:520px; margin:0 auto;
-  /* no bottom padding: .shutter-bar is the last thing on the screen and owns the
-     bottom safe-area inset, so it can paint to the very bottom edge. The
-     keyboard block restores the inset for the composer, which is bottom-most
-     while the shutter bar is hidden. */
   padding:max(14px, env(safe-area-inset-top)) 18px 0;
   display:flex; flex-direction:column; gap:10px;
   overflow-y:auto; overscroll-behavior:contain;
 }
-/* ---------- header: a state-tinted status strip ----------
-   The wordmark used to own the centre of this row while the one fact that
-   decides whether a photo reaches the PC — the connection — was an 8px dot plus
-   11px text in the corner (DESIGN.md §3 files 11px as "meta"; connection state
-   is the product). The user launched this from a home-screen icon, so the top of
-   the screen now belongs to the state: [dot] state · detail [⋮].
-   The strip is TINTED by state, so a change is legible in peripheral vision
-   without reading it — that is what the dot alone could never do at 8px. */
-.capture-bar { flex:none; display:flex; align-items:center; }
+.capture-bar { flex:none; display:flex; align-items:center; position:relative; z-index:30; }
 .status-strip {
+  position:relative;
   flex:1; min-width:0; display:flex; align-items:center; gap:8px;
-  min-height:44px; padding:0 4px 0 12px; border-radius:12px;
+  min-height:46px; padding:0 4px 0 14px; border-radius:999px;
   background:var(--card); border:1px solid var(--border);
+  border-color:var(--glass-border);
+  -webkit-backdrop-filter:saturate(210%) blur(36px);
+  backdrop-filter:saturate(210%) blur(36px);
+  box-shadow:0 12px 32px rgba(0,0,0,.42), var(--glass-highlight);
+  transition:background .22s var(--spring), border-color .22s var(--spring), box-shadow .22s var(--spring);
 }
-/* tints are the status hexes at low alpha on --bg; text on every tint measures
-   ≥12.8:1 and the dot ≥6.9:1, so the tint never costs legibility */
-.status-strip[data-state="ok"]   { background:#12271b; border-color:rgba(34,197,94,.34); }
-.status-strip[data-state="warn"] { background:#2a2113; border-color:rgba(245,158,11,.36); }
-.status-strip[data-state="off"]  { background:#2a1416; border-color:rgba(239,68,68,.36); }
-/* a transfer in progress. Set by renderTransferStatus() while a batch is in
-   flight and cleared with the batch, so "connected" is restored by the same
-   statusDetail() call that rewrites the detail line. */
-.status-strip[data-state="busy"] { background:var(--tint-busy); border-color:var(--tint-busy-bd); }
-.status-strip .ss-main { flex:none; font-size:13.5px; font-weight:650; white-space:nowrap; }
+.status-strip > .dot,
+.status-strip > .ss-main,
+.status-strip > .ss-sub,
+.status-strip > #text-mode-btn,
+.status-strip > .more-wrap {
+  position:relative; z-index:1;
+}
+#text-mode-btn {
+  flex:none; height:32px; padding:0 11px;
+  display:inline-flex; align-items:center; gap:5px;
+  border-radius:999px;
+  background:rgba(255, 255, 255, 0.08);
+  border:1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color:var(--text); font-size:12.5px; font-weight:600;
+  letter-spacing:-0.01em; cursor:pointer; user-select:none;
+  touch-action:manipulation;
+  transition:background .16s var(--spring), border-color .16s var(--spring), transform .14s var(--spring);
+}
+#text-mode-btn .ic { width:14px; height:14px; color:#82d8ff; flex:none; }
+#text-mode-btn:hover { background:rgba(255, 255, 255, 0.14); border-color:rgba(255, 255, 255, 0.26); }
+#text-mode-btn:active { transform:scale(.95); }
+#text-mode-btn[aria-expanded="true"] {
+  background:rgba(10, 132, 255, 0.34);
+  border-color:rgba(100, 210, 255, 0.56);
+}
+.status-wave {
+  position:absolute; inset:0; border-radius:inherit;
+  overflow:hidden; pointer-events:none; z-index:0;
+  opacity:0; transition:opacity .24s var(--spring);
+}
+.status-strip[data-state="busy"] .status-wave { opacity:1; }
+.status-wave-fill {
+  position:absolute; inset:0;
+  transform-origin:0 50%;
+  transform:scaleX(var(--xfer-scale, .22));
+  transition:transform .24s var(--spring);
+  background:linear-gradient(90deg, rgba(10, 132, 255, 0.36) 0%, rgba(56, 189, 248, 0.48) 56%, rgba(48, 209, 88, 0.42) 100%);
+  box-shadow:inset -1.5px 0 0 rgba(255, 255, 255, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 0 24px rgba(56, 189, 248, 0.45);
+  overflow:hidden;
+}
+.status-wave-crest,
+.status-wave-swell {
+  position:absolute; inset:-45% -100% -45% 0;
+  pointer-events:none;
+  background-repeat:repeat-x;
+  background-size:50% 100%;
+}
+.status-wave-crest {
+  background-image:
+    radial-gradient(ellipse 32% 58% at 18% 18%, rgba(255, 255, 255, 0.38) 0%, rgba(125, 211, 252, 0.2) 48%, transparent 72%),
+    radial-gradient(ellipse 36% 62% at 68% 82%, rgba(56, 189, 248, 0.4) 0%, rgba(48, 209, 88, 0.2) 52%, transparent 75%);
+  animation:wave-crest 2s linear infinite;
+}
+.status-wave-swell {
+  background-image:
+    radial-gradient(ellipse 38% 64% at 35% 78%, rgba(255, 255, 255, 0.26) 0%, rgba(10, 132, 255, 0.24) 50%, transparent 74%),
+    radial-gradient(ellipse 30% 54% at 84% 24%, rgba(48, 209, 88, 0.32) 0%, rgba(56, 189, 248, 0.18) 46%, transparent 72%);
+  animation:wave-swell 3s linear infinite reverse;
+}
+@keyframes wave-crest {
+  from { transform:translate3d(0, 0, 0); }
+  50%  { transform:translate3d(-25%, -2px, 0); }
+  to   { transform:translate3d(-50%, 0, 0); }
+}
+@keyframes wave-swell {
+  from { transform:translate3d(0, 0, 0); }
+  50%  { transform:translate3d(-25%, 2px, 0); }
+  to   { transform:translate3d(-50%, 0, 0); }
+}
+.status-strip[data-state="ok"]   { background:rgba(16, 42, 30, 0.66); border-color:rgba(48,209,88,.38); }
+.status-strip[data-state="warn"] { background:rgba(46, 34, 16, 0.68); border-color:rgba(245,158,11,.38); }
+.status-strip[data-state="off"]  { background:rgba(46, 20, 24, 0.68); border-color:rgba(239,68,68,.38); }
+.status-strip[data-state="busy"] { background:var(--tint-busy); border-color:var(--tint-busy-bd); box-shadow:0 12px 34px rgba(10, 132, 255, 0.24), var(--glass-highlight); }
+.status-strip .ss-main { flex:none; font-size:13.5px; font-weight:650; white-space:nowrap; text-shadow:0 1px 2px rgba(0,0,0,.35); }
 .status-strip .ss-sub {
-  flex:1 1 auto; min-width:0; font-size:12px; color:var(--muted);
+  flex:1 1 auto; min-width:0; font-size:12px; color:rgba(235, 242, 255, 0.78);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .muted { color:var(--muted); font-size:13px; }
-/* uppercase micro-label (section eyebrows) + tabular data readouts */
-.eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:11px; font-weight:650; color:var(--muted); }
+.eyebrow { text-transform:uppercase; letter-spacing:.08em; font-size:11px; font-weight:650; color:var(--muted); }
 .tnum { font-variant-numeric:tabular-nums; }
-.dot { width:8px; height:8px; border-radius:50%; background:#f59e0b; transition:background .2s; }
-.dot.ok { background:var(--accent); }
-.dot.warn { background:#f59e0b; } /* amber = reconnecting (DESIGN.md §1) — red stays reserved for confirmed offline */
-.dot.off { background:var(--danger); }
+.dot { width:8px; height:8px; border-radius:50%; background:#f59e0b; transition:background .2s, box-shadow .2s; }
+.dot.ok { background:var(--accent); box-shadow:0 0 10px rgba(48,209,88,.8); }
+.dot.warn { background:#f59e0b; box-shadow:0 0 8px rgba(245,158,11,.6); }
+.dot.off { background:var(--danger); box-shadow:0 0 8px rgba(255,69,58,.6); }
 
-/* ---------- capture: the ONE primary action, in the thumb zone ----------
-   It used to be a --card box at 56px sitting at y≈70px — visually identical to
-   the two pickers below it and the textarea below those, and in the hardest
-   place for a thumb to reach. DESIGN.md §7 asks for "one primary action per
-   view; everything else quiet/outline"; nothing was quiet OR primary, because
-   every surface was the same card.
-   The inverted-white fill introduces no new language — the system already
-   reserves it for emphasis (.toolbtn.active, the PC toast) — and it makes the
-   shutter the only white surface on the screen, so the hierarchy is readable at
-   a glance. It lives in a bottom bar: the layout is a fixed-height column, and
-   on a short/landscape screen the wrap scrolls (its documented overflow net), so
-   a static button would scroll out of reach — sticky keeps the primary action
-   where the thumb already is. */
 .shutter {
   height:60px; padding:0 18px; width:100%;
   display:grid; place-items:center; grid-auto-flow:column; gap:10px;
-  background:var(--inv); border:1px solid transparent; border-radius:16px;
-  color:var(--inv-fg); font-size:17px; font-weight:650;
+  background:var(--inv);
+  background-image:linear-gradient(180deg, #ffffff 0%, #e6ecfa 100%);
+  border:1px solid rgba(255,255,255,.65); border-radius:20px;
+  color:var(--inv-fg); font-size:17px; font-weight:650; letter-spacing:-0.015em;
   cursor:pointer; user-select:none;
-  box-shadow:0 8px 26px rgba(0,0,0,.45);
-  transition:transform .1s, box-shadow .15s;
+  box-shadow:0 14px 34px rgba(0,0,0,.52), 0 0 24px rgba(255,255,255,.12), inset 0 1px 0 #fff;
+  transition:transform .14s var(--spring), box-shadow .15s var(--spring);
 }
 .shutter .ic { width:20px; height:20px; }
 .shutter:active { transform:scale(.97); }
-/* busy: the shutter is the only white surface, so the state rides a green RING
-   around it. Accent-on-white text would be 2.2:1 — the old colour swap cannot
-   survive the inverted fill. */
-.shutter.busy { box-shadow:0 0 0 3px rgba(34,197,94,.5), 0 8px 26px rgba(0,0,0,.45); }
-/* the bottom bar owns the safe-area inset now, so .wrap carries none */
+.shutter.busy { box-shadow:0 0 0 3px rgba(48,209,88,.6), 0 14px 34px rgba(0,0,0,.52); }
 .shutter-bar {
   position:sticky; bottom:0; z-index:5; flex:none;
   display:flex; flex-direction:column; gap:8px;
   padding-top:8px; padding-bottom:max(12px, env(safe-area-inset-bottom));
-  background:var(--bg);
+  background:linear-gradient(180deg, rgba(6,9,19,0) 0%, rgba(6,9,19,.88) 32%, var(--bg) 100%);
 }
 
-/* inline svg icons — ONE .ic block (see the lucide section below); icon
-   classes were declared twice and the 18px/16px variants shadowed each other */
 .hidden { display: none !important; }
-/* ---------- unified "from your PC" lane ----------
-   One container for the PC-sent texts/captures and the transferred files, the
-   text/capture row first. Each lane used to keep a 78px invisible slot while
-   empty so the recent grid never moved — that left two blank bands whenever the
-   PC had sent nothing. The whole lane now collapses instead.
-   The 8px gap is the lane's ONLY vertical spacing: the strips' 32px swipe
-   window is cancelled by a matching negative margin (see the strip block), so
-   strip → strip, strip → "more rows" and "more rows" → tip all measure the
-   same. They used to be 14 / 12 / 4px. */
+/* ---------- unified "from your PC" lane ---------- */
 #inbox { flex:none; display:flex; flex-direction:column; gap:8px; min-height:0; }
 
-/* secondary actions: ONE row of two, 52px tall. It replaces a 2-up picker row
-   plus a pill row whose two controls measured 36px and 38px — both under the
-   44px floor DESIGN.md §2 mandates — and which put pill radius (999px, reserved
-   for "pills, toasts, switches, progress bars, round badges") on a control.
-   It is TWO cells, not three: the sheet's entry point is the ⋮ in the status
-   strip, and a labelled "More" cell was a second door to the same room. The
-   freed third goes to the pickers, which are the reason the row exists. */
 .secondary-row { flex:none; display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
 .alt-btn {
   display:grid; place-items:center; padding:clamp(10px, 2.2vh, 14px);
-  background:var(--card); border:1px solid var(--ctl); border-radius:14px;
-  font-size:14px; font-weight:500; cursor:pointer; user-select:none;
+  background:var(--card); border:1px solid var(--ctl);
+  border-color:var(--glass-border);
+  border-radius:16px;
+  -webkit-backdrop-filter:saturate(200%) blur(28px);
+  backdrop-filter:saturate(200%) blur(28px);
+  box-shadow:0 8px 22px rgba(0,0,0,.32), var(--glass-highlight);
+  font-size:14px; font-weight:550; cursor:pointer; user-select:none;
   touch-action:manipulation;
 }
-/* the pickers are the row's whole purpose now, so they get the room: taller
-   target, larger type and a larger glyph than a plain .alt-btn */
 .alt-btn.sec { min-height:52px; font-size:14.5px; font-weight:600; }
-.alt-btn.sec .ic { width:20px; height:20px; color:var(--muted); }
+.alt-btn.sec .ic { width:20px; height:20px; color:#82d8ff; }
 .alt-btn.sec .btn-face { gap:9px; }
-/* icon + label in ONE flex line — the old markup made them separate grid
-   items, which stacked the icon above the label and left a phantom gap */
-.btn-face { display:inline-flex; align-items:center; gap:8px; }
-.alt-btn:active { transform:scale(.98); }
-/* ghost rows live in the More sheet: quiet, but still bounded — a row with no
-   visible edge is not a control you can find */
-.alt-btn.ghost { background:none; color:var(--muted); border-color:var(--border); }
-/* danger TEXT is #fca5a5, never --danger (that token is for borders/fills and
-   is too dark to read at 14px — DESIGN.md §1) */
+.btn-face { display:inline-flex; align-items:center; gap:8px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.alt-btn:active { transform:scale(.97); }
+.alt-btn.ghost { background:rgba(255,255,255,.04); color:var(--muted); border-color:var(--glass-border); box-shadow:none; }
 .alt-btn.danger { color:#fca5a5; border-color:rgba(239,68,68,.35); border-style:dashed; }
 
-/* overflow menu: lives at the RIGHT END of the status strip. It opens DOWNWARD
-   from the button — opacity/transform only, so it stays on the compositor and
-   never triggers layout or paint. */
+/* overflow menu: lives at the RIGHT END of the status strip. */
 .more-wrap { position:relative; flex:none; }
-/* The button lives INSIDE the status strip now, so there is no negative-margin
-   pull left to do: the strip is the flex child that reaches the page padding and
-   the button sits at its right end. The old -20px pull existed to push the glyph
-   out to the viewport wall past the wrap's 18px + the capture-bar's 2px, and
-   pulling past that edge made the page 6px wider than the screen. */
 #more-btn {
   width:44px; height:44px; display:grid; place-items:center;
   background:none; border:none; color:var(--muted); cursor:pointer;
@@ -192,70 +188,49 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 }
 #more-btn .ic { width:20px; height:20px; }
 #more-btn:hover { color:var(--text); }
-/* the ⋮ is now the ONLY door to the sheet (the labelled "More" cell in the
-   action row was retired), so a tap needs to be acknowledged before the panel
-   animates in — and it gets a touch more contrast than the other muted icons */
-#more-btn:active { background:rgba(255,255,255,.09); color:var(--text); }
+#more-btn:active { background:rgba(255,255,255,.12); color:var(--text); }
 #more-menu { display:grid; gap:8px; margin-top:0; }
 #more-menu.hidden { display: none; }
-/* sheet: anchored below the button, right-aligned to the wordmark's column so
-   it never clips the right screen edge; grows downward via scaleY (transform-
-   origin top). visibility gates the animation so hidden menus cost nothing;
-   the 140ms ease-out keeps it snappy. */
 .more-wrap #more-menu {
-  position:absolute; top:calc(100% + 4px); right:-2px; left:auto;
-  width:min(320px, calc(100vw - 36px));
-  background:var(--card); border:1px solid var(--border); border-radius:14px;
-  padding:8px; box-shadow:0 10px 40px rgba(0,0,0,.5); z-index:50;
+  position:absolute; top:calc(100% + 8px); right:-2px; left:auto;
+  width:min(324px, calc(100vw - 36px));
+  background:rgba(16, 22, 38, 0.86); border:1px solid var(--border);
+  border-color:rgba(255, 255, 255, 0.16);
+  border-radius:20px;
+  -webkit-backdrop-filter:saturate(220%) blur(44px);
+  backdrop-filter:saturate(220%) blur(44px);
+  padding:10px; box-shadow:0 20px 52px rgba(0,0,0,.62), var(--glass-highlight); z-index:50;
   transform-origin:top right;
-  /* six rows + the quality block can outgrow a short/landscape viewport: bound
-     the panel and let IT scroll rather than push the last action off-screen.
-     The bar is hidden (same house pattern as the strips above) — a visible
-     scrollbar inside a floating sheet read as a broken nested pane; the sheet
-     still scrolls, it just does not advertise a rail. */
   max-height:calc(100dvh - 80px - env(safe-area-inset-bottom));
   overflow-y:auto; overscroll-behavior:contain;
   scrollbar-width:none;
   visibility:hidden; opacity:0; transform:translateY(-6px) scaleY(.92);
-  transition:opacity .14s ease-out, transform .14s ease-out, visibility 0s linear .14s;
+  transition:opacity .14s var(--spring), transform .14s var(--spring), visibility 0s linear .14s;
 }
 .more-wrap #more-menu::-webkit-scrollbar { display:none; }
-/* Hiding the bar removed the only cue that the sheet scrolls — and the last
-   delete row genuinely sits below the fold on an 844px screen. Same per-edge
-   convention as the two strips (PITFALLS #32): the .at-top / .at-bottom classes
-   are maintained from scrollTop by syncMenuEdges(), and each fade exists ONLY
-   while there is content past that edge.
-   A ::after overlay rather than the strips' mask-image: a mask would clip the
-   panel's own box-shadow and its 14px corners. */
 .more-wrap #more-menu::after {
   content:''; position:absolute; left:1px; right:1px; bottom:1px;
-  height:30px; border-radius:0 0 13px 13px;
-  background:linear-gradient(to bottom, transparent, var(--card));
+  height:30px; border-radius:0 0 19px 19px;
+  background:linear-gradient(to bottom, transparent, rgba(16, 22, 38, 0.94));
   pointer-events:none; opacity:1; transition:opacity .12s ease-out;
 }
 .more-wrap #more-menu.at-bottom::after { opacity:0; }
 .more-wrap #more-menu.open {
   visibility:visible; opacity:1; transform:none;
-  transition:opacity .14s ease-out, transform .14s ease-out, visibility 0s;
+  transition:opacity .14s var(--spring), transform .14s var(--spring), visibility 0s;
 }
 @media (prefers-reduced-motion: reduce) {
   .more-wrap #more-menu { transition:none; }
 }
 .more-wrap #more-menu .switch-row,
 .more-wrap #more-menu .alt-btn { white-space:normal; overflow:visible; text-overflow:unset; }
-.more-wrap #more-menu .switch-row { border-radius:12px; }
-/* Sheet rows are LIST ITEMS, not grid cells: .alt-btn is place-items:center for
-   the picker grid, which stacked the icon ABOVE the label inside the sheet
-   (these buttons never carried the .btn-face wrapper the pickers have). */
+.more-wrap #more-menu .switch-row { border-radius:14px; }
 .more-wrap #more-menu .alt-btn {
-  border-radius:10px; padding:10px 12px;
+  border-radius:12px; padding:10px 12px;
   justify-items:start; text-align:left;
 }
-/* the base grid-auto-flow:column layout let the caption run INTO the label
-   ("…80% storageAuto-cleanup") — block text stacks them properly */
 .more-wrap #more-menu .switch-row .switch-text { display:block; }
-/* quality block: the switch row + its slider, grouped visually as one item */
-.quality-block { border-radius:12px; }
+.quality-block { border-radius:14px; }
 .quality-block > .switch-row { width:100%; }
 #quality-level-row {
   display:flex; align-items:center; gap:8px;
@@ -266,104 +241,74 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .more-wrap #more-menu .switch-text { white-space:normal; }
 .more-wrap #more-menu .switch-text small { display:block; margin-top:2px; }
 
-/* ---------- More sheet: Sync vs Clean up ----------
-   The panel used to be one flat list in which four destructive bulk actions sat
-   in the same 8px rhythm as the auto-cleanup switch and the quality slider, and
-   only "Delete all" carried .danger — so "Clear PC-sent captures" (which also
-   wipes the PC-side history) read QUIETER than a JPEG quality slider.
-   DESIGN.md §7 requires destructive actions to be visually separated: they now
-   sit under their own heading, inside a dashed rail, all three marked danger. */
+/* ---------- More sheet: Sync vs Clean up ---------- */
 .menu-head {
   font-size:10.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
   color:var(--muted); padding:2px 4px 0;
 }
-.menu-sep { height:1px; background:var(--border); margin:4px 2px; }
-/* sort: a 3-up segmented control. One row tall instead of the three stacked
-   rows a radio list would cost the sheet, and the pressed state is visible
-   without opening a picker. */
+.menu-sep { height:1px; background:rgba(255,255,255,.1); margin:4px 2px; }
 .sort-seg {
   display:grid; grid-template-columns:repeat(3, 1fr); gap:4px;
-  padding:3px; border-radius:11px;
-  background:var(--card2); border:1px solid var(--ctl);
+  padding:3px; border-radius:12px;
+  background:rgba(8, 12, 22, 0.58); border:1px solid var(--ctl);
+  border-color:rgba(255, 255, 255, 0.12);
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.45);
 }
 .sort-opt {
-  min-height:38px; padding:0 6px; border-radius:8px;
+  min-height:38px; padding:0 6px; border-radius:9px;
   background:none; border:1px solid transparent; color:var(--muted);
   font:600 12.5px/1 system-ui,sans-serif; cursor:pointer;
   touch-action:manipulation;
+  transition:background .14s var(--spring), color .14s var(--spring), box-shadow .14s var(--spring);
 }
 .sort-opt[aria-pressed="true"] {
-  background:var(--card); border-color:var(--ctl); color:var(--text);
+  background:rgba(255, 255, 255, 0.14); border-color:rgba(255, 255, 255, 0.22); color:var(--text);
+  box-shadow:0 3px 10px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.22);
 }
 .menu-group {
-  display:grid; gap:6px; padding:6px; border-radius:12px;
+  display:grid; gap:6px; padding:6px; border-radius:14px;
   border:1px dashed rgba(239,68,68,.35);
+  background:rgba(255, 69, 58, 0.04);
 }
-/* the rail already says "these delete things" — a dashed border on every row
-   inside it was double-dashing, so the rows take a solid red edge */
 .menu-group .alt-btn.danger { border-style:solid; border-color:rgba(239,68,68,.28); }
 
-/* secondary actions and the auto-paste switch now live in the More sheet, so
-   the two rows that used to sit here are gone (see .secondary-row) */
-
-/* tap-to-clear: a real control now (role=button), so give it a 44px target */
-/* the queue affordance sits directly ABOVE the shutter — where the thumb already
-   is — and is the amber bar, not a muted caption: this is the moment the user
-   needs to know. It is the ONE place the queue count appears, so an empty queue
-   shows nothing at all (it used to be duplicated into the status line, which
-   claimed "photos queued" even when the queue was empty). */
 #outbox-info {
   flex:none; margin:0; cursor:pointer; text-align:left;
   display:flex; align-items:center; gap:8px;
-  min-height:44px; padding:8px 12px; border-radius:12px;
-  background:rgba(245,158,11,.13); border:1px solid rgba(245,158,11,.36);
+  min-height:44px; padding:8px 14px; border-radius:16px;
+  background:rgba(245, 158, 11, 0.16); border:1px solid rgba(245, 158, 11, 0.42);
+  -webkit-backdrop-filter:saturate(190%) blur(24px); backdrop-filter:saturate(190%) blur(24px);
+  box-shadow:0 8px 24px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.18);
   color:#fbbf24; font-size:12.5px; font-weight:600;
 }
-#outbox-info .ic { width:15px; height:15px; }
+#outbox-info .ic { width:15px; height:15px; flex:none; }
+#outbox-text { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #outbox-info:active { border-color:#f59e0b; }
-#text-queued, #file-queued { text-align:center; flex:none; }
-/* one-time affordance for the swipe-down-to-delete gesture */
-/* the lane's ONE gesture tip (see phone.html — it used to be two) */
-#chip-hint { text-align:center; flex:none; }
+#text-queued, #file-queued { text-align:center; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#chip-hint { text-align:center; flex:none; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-/* deferred-delete undo snackbar. Unlike .flash this one IS interactive — it
-   carries the Undo button and must never be pointer-events:none. */
 #undo-toast {
-  /* lifted clear of .shutter-bar (8 + 60 + the safe-area inset): at bottom:14px
-     the new bar sat on top of the Undo button */
   position:fixed; left:50%; bottom:max(84px, calc(env(safe-area-inset-bottom) + 72px));
   transform:translateX(-50%);
   display:flex; align-items:center; gap:12px;
   max-width:92vw; padding:4px 8px 4px 18px;
-  background:var(--inv); color:var(--inv-fg); font-size:13px; font-weight:500;
-  border-radius:999px; box-shadow:0 6px 24px rgba(0,0,0,.45);
+  background:var(--inv); color:var(--inv-fg); font-size:13px; font-weight:550;
+  border-radius:999px; box-shadow:0 12px 32px rgba(0,0,0,.52), inset 0 1px 0 #fff;
   overflow:hidden; z-index:210;
-  animation:flashin .25s ease;
+  animation:flashin .22s var(--spring);
 }
 #undo-toast.hidden { display:none; }
-/* ONE line, always. The message used to wrap (`overflow-wrap:anywhere`) so a
-   long name would not vanish — but this is a 999px PILL, not the .flash
-   rectangle, and a 116-char file name wrapped to THIRTEEN lines: measured
-   195×226px of white covering the whole lane, the tip, the picker row and part
-   of the shutter, with the name squeezed into a 94px column.
-   The clip is VISUAL only — the live region keeps the whole string, so a screen
-   reader still announces the full name; the sighted head of the name is what
-   identifies the row. `.flash` keeps wrapping: it is a rounded rect with room
-   for a second line, and its messages explain a REASON ("«name» is over the
-   size cap") where the cut-off part is the part that matters. */
 #undo-toast-msg {
   flex:1 1 auto; min-width:0;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 #undo-toast-btn {
   flex:none; border:none; cursor:pointer; border-radius:999px;
-  background:#000; color:#fff; font-weight:700; font-size:12px;
+  background:#070a12; color:#fff; font-weight:700; font-size:12px;
   min-height:44px; padding:0 16px; touch-action:manipulation;
   display:inline-flex; align-items:center; justify-content:center;
 }
 #undo-toast-btn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-/* scaleX, not width: the bar shrinks for the whole 6s window and animating a
-   layout property repaints every frame (H2 in the UI/UX audit) */
 #undo-toast .undo-bar {
   position:absolute; left:0; bottom:0; height:3px; width:100%;
   transform-origin:left center;
@@ -377,45 +322,27 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .text-chip .chip-when { flex:none; color:var(--muted); font-size:11.5px; }
 .text-chip .chip-url { color:var(--accent); word-break:break-all; }
 
-/* ---------- PC-sent rich content: ONE card anatomy (capture + file) ----------
-   A capture and a file arrive from the same place and do the same job, so they
-   render as the SAME card: a 42px leading visual, a title/sub meta block and
-   the direction badge in the trailing slot — same width, same height, same
-   radius, same insets, so the two lanes below stack on one axis instead of
-   showing a pill, a thumbnail and an icon tile at three different heights.
-
-   The media chip keeps .text-chip for the strip behaviours that class owns
-   (reconcile key, swipe gesture, focus ring) and out-specifies its pill
-   geometry; plain texts KEEP the pill, because text has no thumbnail and no
-   second line to put in a card. */
+/* ---------- PC-sent rich content: ONE card anatomy (capture + file) ---------- */
 .media-chip, .file-chip {
   flex:none; display:flex; align-items:center; gap:10px;
   width:min(76vw, 248px); max-width:min(76vw, 248px); min-height:58px;
-  /* --ctl, not --border: a chip is TAPPED (copy / preview / file actions), so
-     its outline is a control boundary and owes 1.4.11 its 3:1. On --border it
-     measured 1.56:1 — the inbox lane was a row of cards you could not see. */
-  background:var(--card); border:1px solid var(--ctl); border-radius:12px;
+  background:var(--card); border:1px solid var(--ctl);
+  border-color:var(--glass-border);
+  border-radius:12px;
+  -webkit-backdrop-filter:saturate(200%) blur(28px);
+  backdrop-filter:saturate(200%) blur(28px);
   padding:8px; cursor:pointer; touch-action:manipulation;
-  /* both halves of the ONE card anatomy carry the same root size. The file
-     card inherited body's 16px while the capture card's .text-chip said 13px —
-     invisible today only because every child sets its own size. */
   font-size:13px;
 }
-/* .text-chip owns the pill, and .text-chip.media-chip (0,2,0) takes the CARD
-   geometry back. Only the declarations that CONFLICT with the pill are listed:
-   everything else already comes from the shared card rule above, and the
-   pairing is what keeps the card geometry whatever the source order. */
 .text-chip.media-chip {
   width:min(76vw, 248px); max-width:min(76vw, 248px);
   border-radius:12px; padding:8px; min-height:58px;
   white-space:normal; text-overflow:clip;
 }
 .media-chip:active, .file-chip:active { border-color:var(--accent); }
-/* the leading visual: an image thumb, its placeholder, or the file-kind icon —
-   one size and one radius for all three */
 .media-chip img, .chip-thumb-missing, .f-thumb {
   flex:none; width:42px; height:42px; border-radius:9px;
-  background:var(--card2); object-fit:cover; align-self:center;
+  background:rgba(10, 14, 26, 0.65); object-fit:cover; align-self:center;
 }
 .chip-thumb-missing { display:grid; place-items:center; color:var(--muted); font-size:13px; }
 .chip-thumb-missing::before { content:'–'; }
@@ -423,8 +350,6 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .f-thumb .ic { width:18px; height:18px; }
 .f-thumb.pc { color:#60a5fa; }
 .f-thumb.phone { color:var(--accent); }
-/* meta block: title + sub on the shared ellipsis path (long names never push
-   the card wider — the card is a fixed width, the text gives way) */
 .media-chip .chip-meta, .file-chip .f-meta { flex:1 1 auto; min-width:0; display:block; }
 .media-chip .chip-title, .file-chip .f-name {
   display:block; font-size:13px; color:var(--text);
@@ -434,30 +359,16 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
   display:block; font-size:11.5px; color:var(--muted);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-/* direction badge: the trailing slot on both cards. PC = blue, phone = accent
-   (DESIGN.md §1). The media chip's badge used to be accent green — i.e. it
-   read "from this phone" on a PC-sent capture, contradicting the file chip
-   sitting right below it. */
 .chip-badge {
   flex:none; align-self:center; display:inline-flex; align-items:center; gap:3px;
   font-size:10.5px; font-weight:800; line-height:1; background:var(--accent);
   color:#000; border-radius:5px; padding:2px 5px;
 }
-/* the direction pair, spelled out on both sides the way .f-thumb already does:
-   PC = blue, phone = accent (DESIGN.md §1). The phone half used to lean on the
-   base rule above, so only the PC half was greppable as a direction. */
 .chip-badge.pc { background:#60a5fa; }
 .chip-badge.phone { background:var(--accent); }
 .chip-badge .ic { width:10px; height:10px; }
-/* entrance for a chip that was just BUILT (new PC-sent item, restored row after
-   Undo). Only fresh nodes get the class and JS drops it right after, so the
-   strip's reconcile pass — which re-inserts existing nodes — never replays it. */
 .chip-new { animation:chip-in .16s cubic-bezier(.2, .9, .25, 1) both; }
 @keyframes chip-in { from { opacity:0; transform:translateY(6px) scale(.96); } }
-/* inline link button ("show older") — phone-scoped styling: the only copy of
-   .linkbtn lives in style.css, which this page never loads, so the control
-   rendered as a default light-grey browser button inside the dark strip.
-   44px tall to match the chips it sits between. */
 .linkbtn {
   flex:none; min-height:44px; padding:0 8px;
   display:inline-flex; align-items:center;
@@ -468,81 +379,96 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .linkbtn:hover { color:var(--text); }
 .linkbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
-/* empty gallery hint — margin:auto centres it in .gallery, which is the only
-   thing left to fill the space when #recent is display:none */
 .empty-recent { text-align:center; padding:10px 0; margin:auto 0; }
-/* viewer position counter ("3 / 15") */
 #viewer-pos { color: var(--muted); font-size: 12.5px; align-self: center; flex: none; }
 
-/* text sync: THIN one-line bar + expand toggle for long drafts.
-   Single definition (the earlier 96px/52px/font-size:0 duplicates are gone). */
-.text-row { flex:none; display:flex; align-items:flex-start; gap:8px; min-height:0; }
-/* the field and its expand chevron are ONE control: the chevron lives INSIDE the
-   field box (bottom-right), so it reads as the field's own affordance rather
-   than a sibling button competing for the row. It is still a real <button> for
-   a11y — just visually in-field.
-   The 44px tap target is bigger than the 40px field, so it overhangs by 6px
-   top / 2px bottom; the padding (12/12 + 14px icon) keeps the VISIBLE glyph
-   inside the rounded border at every field height. */
-.text-box { position:relative; flex:1; min-width:0; align-self:flex-start; }
+/* Full-screen minimal Liquid Glass text editing window toggled from #text-mode-btn */
+.text-row {
+  position:fixed; inset:0; z-index:85;
+  display:flex; flex-direction:column; align-items:stretch; gap:12px; min-height:0;
+  padding:max(14px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background:radial-gradient(120% 80% at 50% 0%, rgba(16, 28, 56, 0.94) 0%, rgba(6, 9, 18, 0.96) 100%);
+  -webkit-backdrop-filter:saturate(210%) blur(44px);
+  backdrop-filter:saturate(210%) blur(44px);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transform:translateY(14px) scale(.985);
+  transition:opacity .2s var(--spring), transform .22s var(--spring), visibility 0s linear .22s;
+}
+body.text-mode .text-row,
+body.kb-open .text-row {
+  opacity:1; visibility:visible; pointer-events:auto;
+  transform:none;
+  transition:opacity .2s var(--spring), transform .22s var(--spring), visibility 0s;
+}
+.text-modal-bar {
+  flex:none; display:flex; align-items:center; justify-content:space-between; gap:10px;
+  min-height:44px;
+}
+.text-modal-title {
+  flex:1 1 auto; min-width:0;
+  font-size:15px; font-weight:650; letter-spacing:-0.015em;
+  color:var(--text); text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#text-mode-close {
+  flex:none; min-height:44px; padding:0 16px;
+  border-radius:999px; border:1px solid var(--glass-border);
+  background:rgba(255, 255, 255, 0.07); color:var(--muted);
+  box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  font:550 13.5px/1 system-ui,sans-serif; cursor:pointer;
+  touch-action:manipulation;
+  transition:background .15s var(--spring), color .15s var(--spring), transform .14s var(--spring);
+}
+#text-mode-close:hover { color:var(--text); background:rgba(255, 255, 255, 0.12); }
+#text-mode-close:active { transform:scale(.96); }
+.text-box { position:relative; flex:1; min-width:0; align-self:center; }
 #text-expand {
-  position:absolute; right:4px; bottom:0;
-  width:44px; height:44px; margin-bottom:-2px; padding:0 12px 12px 0;
-  display:grid; place-items:end; place-content:end;
-  background:none; border:none; color:var(--muted); cursor:pointer;
+  position:absolute; right:2px; bottom:0;
+  width:44px; height:44px; margin-bottom:-2px; padding:0;
+  display:grid; place-items:center;
+  background:none; border:none; border-radius:999px; color:var(--muted); cursor:pointer;
   touch-action:manipulation;
 }
-#text-expand .ic { width:14px; height:14px; transition:transform .15s; }
-#text-expand[aria-expanded="true"] .ic { transform:rotate(180deg); }
+#text-expand:hover { color:var(--text); }
+#text-expand .ic { width:15px; height:15px; transition:transform .18s var(--spring); }
+#text-expand[aria-expanded="true"] .ic { transform:rotate(180deg); color:#82d8ff; }
 #text-input {
   width:100%; resize:none;
-  background:var(--card); border:1px solid var(--ctl); color:var(--text);
-  /* right padding reserves the in-field expand chevron's column */
-  border-radius:12px; padding:9px 32px 9px 12px;
+  background:rgba(7, 10, 19, 0.54); border:1px solid var(--ctl);
+  border-color:rgba(255, 255, 255, 0.1);
+  color:var(--text);
+  border-radius:18px; padding:9px 32px 9px 12px;
   font:15px/1.35 system-ui,sans-serif;
-  /* same 150px ceiling as the PC harness — one auto-grow pattern, not two */
   height:40px; min-height:40px; max-height:150px;
+  box-shadow:inset 0 1px 3px rgba(0, 0, 0, 0.42);
+  transition:border-color .16s var(--spring), background-color .16s var(--spring);
 }
-/* drafting mode: opens AT the ceiling and Enter inserts a newline instead of
-   sending. It is a mode, not a second height ceiling. */
+#text-input::placeholder { color:rgba(152, 162, 184, 0.72); }
 #text-input.expanded { height:150px; }
-#text-input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
-/* send: demoted from the ONLY inverted fill on the page. The inverted fill is
-   19.2:1 against the page while the old shutter's card sat at 1.08:1 — so the
-   brightest element on the phone was a SECONDARY action, and the primary one was
-   invisible. Exactly one inverted surface per screen now: the shutter. */
+#text-input:focus { outline:none; border-color:rgba(100, 210, 255, 0.42); background:rgba(6, 9, 17, 0.72); }
 #text-send {
   flex:none; width:44px; height:44px; padding:0;
+  display:grid; place-items:center;
   font-size:0; color:var(--accent);
-  background:var(--card2); border:1px solid var(--ctl); border-radius:12px;
+  background:radial-gradient(circle at 32% 24%, rgba(48, 209, 88, 0.28), rgba(10, 132, 255, 0.22));
+  border:1px solid var(--ctl);
+  border-color:rgba(48, 209, 88, 0.42);
+  border-radius:999px;
+  box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.26), 0 6px 16px rgba(0, 0, 0, 0.34);
+}
+.text-row.has-text #text-send {
+  background:radial-gradient(circle at 30% 22%, rgba(48, 209, 88, 0.46), rgba(10, 132, 255, 0.34));
+  border-color:rgba(48, 209, 88, 0.72);
+  box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 6px 20px rgba(48, 209, 88, 0.32);
 }
 #text-send .ic { width:18px; height:18px; }
-#text-send:focus-visible, #text-expand:focus-visible, #viewer-close:focus-visible, #file-sheet-close:focus-visible,
+#text-send:focus-visible, #text-expand:focus-visible, #text-mode-btn:focus-visible, #text-mode-close:focus-visible,
+#viewer-close:focus-visible, #file-sheet-close:focus-visible,
 .vbtn:focus-visible, .alt-btn:focus-visible, .shutter:focus-visible,
 .switch-row:focus-visible, #more-btn:focus-visible {
   outline:2px solid var(--accent); outline-offset:2px;
 }
-/* ---------- the PC-sent lane's two strips: ONE plumbing block ----------
-   #text-in (PC-sent texts/captures) and #files (transfers, both directions)
-   are the same horizontal strip, so they are declared together — as two blocks
-   they had already drifted, and every difference was visible:
-     - 2px of side padding here and there pushed every chip 2px in from the page
-       gutter, so the lane never lined up with the composer above it nor with
-       the "older rows" control and the tip below it (all at the 18px gutter).
-     - the two strips' bottom padding plus #inbox's gap produced 14px between
-       the strips, 12px under them and 4px under the control: three rhythms.
-       The 32px bottom padding is the swipe's travel window INSIDE the
-       border-box, so the matching negative margin hands it back to the layout
-       and #inbox's gap is the only vertical spacing left.
-   - overflow-y must be HIDDEN (not auto): a swipe-driven translate would
-     otherwise open a vertical scrollbar on the strip mid-gesture.
-   - align-items:center keeps every item on one axis now that the strips mix
-     44px text pills with 58px capture/file cards (the old default `stretch`
-     pulled the pills to the card height and left the thumbnails off-centre).
-   - the edge fade is opt-in PER EDGE (.at-start / .at-end, set by JS). A strip
-     parked at its start used to run its first chip through the 0→14px
-     transparent ramp, so that chip's left border was simply not drawn; a strip
-     with nothing past its end faded that end too. */
+/* ---------- PC-sent strips (#text-in and #files) ---------- */
 .text-in, #files {
   position:relative;
   flex:none; display:flex; flex-direction:row; align-items:center; gap:8px; min-height:0;
@@ -554,14 +480,6 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .text-in.at-start, #files.at-start { --fade-l:0px; }
 .text-in.at-end, #files.at-end { --fade-r:0px; }
 .text-in::-webkit-scrollbar, #files::-webkit-scrollbar { display:none; }
-/* the other half of the affordance: the edge fade says "there is more past
-   here", this says "you can push it". A touch device has no scrollbar, so a
-   strip holding six capture cards still read as a strip holding one — and the
-   76vw card means a second card is always only peeking. Drawn only while
-   .at-end is absent; JS maintains that class from scrollLeft/scrollWidth
-   (PITFALLS #32), so the cue retires exactly when there is nothing left to
-   reveal. A border triangle, not a glyph, so it needs no markup and cannot be
-   reached by the tab order. */
 .text-in:not(.at-end)::after, #files:not(.at-end)::after {
   content:''; position:absolute; top:50%; right:1px; transform:translateY(-50%);
   width:0; height:0;
@@ -571,40 +489,21 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 }
 .text-chip {
   flex:none; max-width:190px;
-  /* --ctl: a text chip is tapped to copy, so its outline is a control boundary
-     (1.4.11), not a decorative hairline. overflow:hidden is load-bearing here —
-     it is what makes the ellipsis below work on a one-line pill. */
-  background:var(--card); border:1px solid var(--ctl); border-radius:999px;
+  background:var(--card); border:1px solid var(--ctl);
+  border-color:var(--glass-border);
+  border-radius:999px;
+  -webkit-backdrop-filter:saturate(200%) blur(28px);
+  backdrop-filter:saturate(200%) blur(28px);
   padding:10px 14px; min-height:44px; font-size:13px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;
   touch-action:manipulation;
 }
 .text-chip:active { border-color:var(--accent); }
 
-/* the gallery block: the grid plus its loading/empty/error states in ONE flex:1
-   box. The gallery moved to the TOP of the screen ("did it land?" is the
-   question this screen answers; the shutter is now under the thumb at the
-   bottom), and it needs the wrapper because an empty library sets
-   #recent{display:none} — with nothing left to absorb the free space, the
-   composer and the shutter bunched at the top of the screen.
-   overflow:hidden is containment, not decoration: the gallery is the flex:1
-   item, so a tall lane on a short screen (320×568 with the PC-sent lane's
-   "more rows" showing) squeezes it to a few px — and its children (the empty
-   hint, which cannot shrink below its two lines) then painted straight over the
-   composer. A box that cannot hold its content clips it; #recent keeps its own
-   scroller, so nothing reachable is lost.
-   The 44px floor is #recent's own floor (one row of tiles): the gallery is
-   never the thing that vanishes when the screen runs out, so .wrap's
-   documented overflow net engages and the grid stays reachable by scrolling. */
 .gallery { flex:1 1 auto; min-height:44px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
-/* recent strip: shrinks to the space left over; scrolls internally only if the
-   user has more photos than fit — the page itself never scrolls */
 #recent {
   flex:1 1 auto; min-height:44px;
   display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));
-  /* rows size to CONTENT (the square tiles) — the old 1fr rows fought the
-     tiles' aspect-ratio in a sizing loop: rows got squashed and the square
-     images bled over neighbouring rows (the "piled captures" bug) */
   grid-auto-rows:max-content;
   gap:10px; align-content:start; overflow-y:auto; padding:2px;
   scrollbar-width:thin; overscroll-behavior:contain; touch-action:pan-y;
@@ -620,26 +519,19 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
   outline:2px solid var(--accent); outline-offset:2px;
 }
 #recent:empty { display:none; }
-/* Loading convention, shared with the PC harness: LISTS get shimmer skeletons,
-   single values get "…". The skeleton grid mirrors #recent's tracks so the first
-   paint and the loaded paint occupy the same box — no jump when tiles land. */
 #recent-loading {
   flex:1 1 auto; min-height:44px;
   display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));
   grid-auto-rows:max-content; gap:10px; align-content:start; padding:2px;
 }
-/* the sweep is a translated gradient overlay, not an animated background-
-   position: the old version repainted every skeleton tile every frame for the
-   whole load, the new one is compositor-only (H1 in the UI/UX audit) */
 #recent-loading .skel-tile {
   position:relative; overflow:hidden;
-  /* 10px, matching #recent .ok-badge — the skeleton exists so the loaded paint
-     occupies the SAME box, and an 11px radius broke that by 1px */
-  width:100%; aspect-ratio:1 / 1; border-radius:10px; background:var(--card2);
+  width:100%; aspect-ratio:1 / 1; border-radius:14px; background:var(--card2);
+  border:1px solid var(--glass-border);
 }
 #recent-loading .skel-tile::after {
   content:''; position:absolute; inset:0; pointer-events:none;
-  background:linear-gradient(100deg, transparent 35%, #26282b 50%, transparent 65%);
+  background:linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.08) 50%, transparent 65%);
   transform:translateX(-100%);
   animation:shimmer 1.2s infinite linear;
 }
@@ -647,30 +539,20 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 @media (prefers-reduced-motion: reduce) { #recent-loading .skel-tile::after { animation:none; } }
 #recent .ok-badge {
   position:relative; aspect-ratio:1; width:100%; align-self:start;
-  min-width:0; min-height:0; overflow:hidden; border-radius:10px;
+  min-width:0; min-height:0; overflow:hidden; border-radius:14px;
   background:var(--card2); border:1px solid var(--border);
-  /* press feedback for the tiles: compositor-only scale + a border tint, so a
-     tap is acknowledged before the viewer opens */
-  transition:transform .12s ease, border-color .12s ease;
+  border-color:var(--glass-border);
+  box-shadow:0 8px 20px rgba(0, 0, 0, 0.32), var(--glass-highlight);
+  transition:transform .14s var(--spring), border-color .14s var(--spring), box-shadow .14s var(--spring);
 }
-#recent .ok-badge:active { transform:scale(.97); border-color:var(--accent); }
-/* img is absolutely positioned: it can never feed back into row sizing, so
-   every tile is a true square and images never pile onto each other */
+#recent .ok-badge:active { transform:scale(.96); border-color:var(--accent); }
 #recent img {
-  position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:10px;
+  position:absolute; inset:0; width:100%; height:100%; object-fit:cover; border-radius:14px;
   display:block; transition:opacity .18s ease-out;
 }
-/* thumbnail appearance: opacity only (compositor-friendly). Starts transparent
-   ONLY when JS marks it decoding (a tile whose bitmap isn't ready yet), then
-   fades in on decode-done — gates on DECODE, never on the network, so there
-   is no added latency; server-backed tiles (thumbnail likely cached) stay at
-   opacity 1 and paint instantly. */
 #recent img.thumb-enter { opacity:0; }
 #recent img.thumb-in { opacity:1; }
 
-/* tile entrance for NEW captures (just shot / just sent / pushed from PC):
-   a fast, compositor-only settle — transform/opacity never trigger layout or
-   paint. 160ms reads as instant; history tiles never get the class. */
 #recent .tile-enter {
   animation:tile-enter .16s cubic-bezier(.2, .9, .25, 1) both;
 }
@@ -678,28 +560,16 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
   from { opacity:0; transform:scale(.88); }
   to   { opacity:1; transform:none; }
 }
-/* tile state badge — geometry only, NO default content. A ✓ on EVERY tile marked
-   the NORMAL case, so it carried no information, and it spent 18px of the
-   top-right corner of every 96px thumbnail — the only part of the UI that is
-   actual content. The ✓ is now an ARRIVAL confirmation: JS adds .just-sent when
-   a capture lands and drops it ~2s later. .pending and .failed persist, because
-   those are the states worth interrupting for. */
 #recent .ok-badge::after {
   content:none; position:absolute; top:4px; right:4px;
   width:18px; height:18px; border-radius:50%;
   display:grid; place-items:center; font-size:12px; font-weight:700;
 }
-/* the tick leaves on a FADE, not a pop: it is a confirmation, and one that
-   vanishes between two frames reads as a glitch. .just-sent-out keeps the ✓
-   rendered (it is .just-sent that generates the content) and takes it to
-   opacity 0; JS drops both classes one transition later. */
 #recent .ok-badge.just-sent::after {
   content:'✓'; background:var(--accent); color:#000;
   transition:opacity .4s ease;
 }
 #recent .ok-badge.just-sent-out::after { opacity:0; }
-/* pending = a calm amber ring spinner (the emoji hourglass read as a broken
-   image at 18px). transform-only rotation, so it never repaints. */
 #recent .ok-badge.pending::after {
   content:''; background:rgba(14,15,16,.8);
   border:2px solid #f59e0b; border-top-color:transparent;
@@ -707,8 +577,6 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 }
 @keyframes pulse-spin { to { transform:rotate(360deg); } }
 #recent .ok-badge.failed::after { content:'!'; background:var(--danger); color:#fff; animation:none; }
-
-/* per-tile actions removed — viewer is the action surface now */
 
 /* inline lucide icons (mask technique, colorable via currentColor) —
    single source of truth for every .ic class on this surface */
@@ -737,48 +605,44 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 /* viewer: fullscreen image + actions underneath (gallery-style) */
 #viewer {
   position:fixed; inset:0; z-index:60;
-  background:rgba(10,10,11,.97);
+  background:rgba(4, 7, 15, 0.88);
+  -webkit-backdrop-filter:saturate(200%) blur(32px);
+  backdrop-filter:saturate(200%) blur(32px);
   display:flex; flex-direction:column;
   padding:max(10px, env(safe-area-inset-top)) 10px max(12px, env(safe-area-inset-bottom));
 }
 #viewer.hidden { display:none; }
 #viewer-close {
   position:absolute; top:max(12px, env(safe-area-inset-top)); right:14px;
-  width:44px; height:44px; border-radius:12px;
-  background:var(--card); border:1px solid var(--border); color:var(--text);
+  width:44px; height:44px; border-radius:999px;
+  background:var(--card); border:1px solid var(--border);
+  border-color:var(--glass-border);
+  box-shadow:var(--glass-highlight);
+  color:var(--text);
   font-size:18px; cursor:pointer;
-  /* must sit ABOVE #viewer-img: the img's will-change:transform promotes it to
-     a stacking context that paints (and receives taps) over this button in the
-     same z-tier — later DOM order won. Explicit z-index fixes tap targeting. */
   z-index:5;
   touch-action:manipulation;
 }
 #viewer-img {
-  width:100%; height:100%; object-fit:contain; border-radius:12px;
+  width:100%; height:100%; object-fit:contain; border-radius:16px;
   will-change:transform; -webkit-user-drag:none; user-select:none;
-  transition:transform .18s ease-out;
+  transition:transform .18s var(--spring);
 }
-/* one-time swipe affordance: floats above the stage, never intercepts taps */
 #viewer-hint {
   position:absolute; left:50%; bottom:max(86px, calc(env(safe-area-inset-bottom) + 80px));
   transform:translateX(-50%); z-index:4; pointer-events:none;
-  background:rgba(23,24,26,.9); border:1px solid var(--border); color:var(--muted);
+  background:rgba(16, 22, 38, 0.85); border:1px solid var(--glass-border); color:var(--muted);
+  -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
   font-size:12px; padding:6px 14px; border-radius:999px; white-space:nowrap;
 }
 #viewer-hint.hidden { display:none; }
-/* during active gestures the transition is off (it re-fired on every
-   touchmove and made zoom/pan rubber-band behind the fingers);
-   JS re-adds .animate for snap-back and navigation swaps */
 #viewer-img.gesturing { transition:none; }
 #viewer-stage { flex:1 1 auto; min-height:0; overflow:hidden; display:flex; touch-action:none; position:relative; }
-/* incoming-neighbor layer for gallery-style slide navigation: sits BELOW the
-   current image, positioned by JS at ±stageW + drag offset and animated in
-   with the same transition as the current image on commit */
 #viewer-under {
   position:absolute; inset:0; width:100%; height:100%;
-  object-fit:contain; border-radius:12px;
+  object-fit:contain; border-radius:16px;
   will-change:transform; -webkit-user-drag:none; user-select:none;
-  transition:transform .18s ease-out; display:none;
+  transition:transform .18s var(--spring); display:none;
 }
 #viewer-under.gesturing { transition:none; }
 
@@ -788,33 +652,28 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 }
 .vbtn {
   flex:1; max-width:180px; padding:13px 0;
-  background:var(--card); border:1px solid var(--border); color:var(--text);
-  border-radius:14px; font-size:15px; font-weight:600; cursor:pointer;
+  background:var(--card); border:1px solid var(--border);
+  border-color:var(--glass-border);
+  box-shadow:0 8px 22px rgba(0,0,0,.35), var(--glass-highlight);
+  color:var(--text);
+  border-radius:16px; font-size:15px; font-weight:600; cursor:pointer;
   touch-action:manipulation;
 }
-.vbtn:active { transform:scale(.98); border-color:var(--accent); }
+.vbtn:active { transform:scale(.97); border-color:var(--accent); }
 .vbtn.hidden { display:none; }
-/* destructive viewer action: danger TEXT tint + red border only — solid red
-   fills are reserved for status dots and failed tiles (DESIGN.md §1) */
-.vbtn.del { color:#fca5a5; border-color:rgba(239,68,68,.35); }
+.vbtn.del { color:#fca5a5; border-color:rgba(239,68,68,.38); background:rgba(255, 69, 58, 0.12); }
 .vbtn.del:active { border-color:var(--danger); }
-/* the bar now holds up to four actions on small screens — the vbtn sizing keeps
-   them from crushing the position counter */
 #viewer-bar .vbtn { min-width:104px; flex:0 1 auto; padding-left:14px; padding-right:14px; }
 
-/* flash toast — same visual language as the PC harness toasts.
-   TOP of the screen: at the bottom it sat over the viewer action bar
-   (Delete/Download/Retry) and blocked taps mid-gesture. */
+/* flash toast */
 .flash {
   position:fixed; top:max(12px, env(safe-area-inset-top)); left:50%; transform:translateX(-50%);
-  background:var(--inv); color:var(--inv-fg); font-size:13px; font-weight:500;
-  /* a long file name used to be ellipsized away exactly where the message
-     mattered (“«name» is over the size cap”): the pill wraps to two lines */
-  border-radius:16px; padding:9px 18px; z-index:200; text-align:center;
-  box-shadow:0 6px 24px rgba(0,0,0,.4);
+  background:var(--inv); color:var(--inv-fg); font-size:13px; font-weight:550;
+  border-radius:999px; padding:9px 18px; z-index:200; text-align:center;
+  box-shadow:0 12px 32px rgba(0,0,0,.48), inset 0 1px 0 #fff;
   max-width:min(92vw, 420px); overflow-wrap:anywhere;
-  animation:flashin .25s ease;
-  pointer-events:none; /* information only — must never block taps (viewer ✕) */
+  animation:flashin .22s var(--spring);
+  pointer-events:none;
 }
 @keyframes flashin { from { opacity:0; transform:translate(-50%,-8px); } }
 
@@ -838,30 +697,35 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
   .secondary-row { gap:6px; }
 }
 
-/* ---------- keyboard mode ----------
-   visualViewport shrinking (JS toggles body.kb-open) means the soft keyboard
-   is up: text entry is the task, so the capture crowd steps aside and the
-   text area takes the freed space. Everything returns when the keyboard
-   closes — no layout property is animated, so this is cheap. */
+/* ---------- keyboard & text editor mode ---------- */
 body.kb-open .secondary-row,
 body.kb-open .shutter-bar,
 body.kb-open .recent-heading,
 body.kb-open .gallery,
 body.kb-open #inbox,
 body.kb-open #outbox-info { display:none; }
-/* the composer is bottom-most while the shutter bar is hidden, so it takes the
-   safe-area inset back from .wrap */
 body.kb-open .wrap { padding-bottom:max(12px, env(safe-area-inset-bottom)); }
+body.text-mode .text-row,
 body.kb-open .text-row { flex:1 1 auto; align-items:stretch; }
-body.kb-open .text-box { display:flex; }
-body.kb-open #text-input { height:100%; max-height:none; }
+body.text-mode .text-box,
+body.kb-open .text-box { flex:1 1 auto; width:100%; display:flex; align-self:stretch; }
+body.text-mode #text-input,
+body.kb-open #text-input {
+  flex:1 1 auto; height:100%; max-height:none;
+  padding:16px 18px; border-radius:22px;
+  font-size:16.5px; line-height:1.5;
+  background:rgba(10, 15, 28, 0.72);
+  border-color:rgba(255, 255, 255, 0.14);
+}
+body.text-mode #text-expand,
 body.kb-open #text-expand { display:none; }
 
-/* auto-paste: a real switch row — state is visible at a glance, not a
-   button that looks like an action */
+/* switch rows */
 .switch-row {
   flex:none; width:100%; display:flex; align-items:center; gap:12px;
-  padding:10px 14px; background:var(--card); border:1px solid var(--ctl);
+  padding:10px 14px; background:rgba(255, 255, 255, 0.04); border:1px solid var(--ctl);
+  border-color:rgba(255, 255, 255, 0.12);
+  box-shadow:inset 0 1px 0 rgba(255, 255, 255, 0.12);
   border-radius:14px; cursor:pointer; text-align:left; user-select:none;
   touch-action:manipulation;
 }
@@ -870,43 +734,33 @@ body.kb-open #text-expand { display:none; }
 .switch-row .switch-text small { grid-column:1 / -1; color:var(--muted); font-size:11.5px; font-weight:400; }
 .switch-row .switch-text .ic { color:var(--muted); }
 .switch {
-  flex:none; width:44px; height:26px; border-radius:999px;
-  background:var(--card2); border:1px solid var(--ctl); position:relative;
-  transition:background .18s ease, border-color .18s ease;
+  flex:none; width:46px; height:28px; border-radius:999px;
+  background:rgba(8, 12, 22, 0.65); border:1px solid var(--ctl);
+  border-color:rgba(255, 255, 255, 0.16);
+  box-shadow:inset 0 1px 3px rgba(0, 0, 0, 0.45);
+  position:relative;
+  transition:background .18s var(--spring), border-color .18s var(--spring);
 }
 .switch::after {
-  content:''; position:absolute; top:2px; left:2px; width:20px; height:20px;
-  border-radius:50%; background:var(--muted);
-  transition:transform .18s ease, background .18s ease;
+  content:''; position:absolute; top:2px; left:2px; width:22px; height:22px;
+  border-radius:50%; background:#d8e0f0;
+  box-shadow:0 2px 6px rgba(0, 0, 0, 0.4);
+  transition:transform .18s var(--spring), background .18s var(--spring);
 }
 .switch-row[aria-checked="true"] .switch { background:var(--accent); border-color:var(--accent); }
-.switch-row[aria-checked="true"] .switch::after { transform:translateX(18px); background:#0e0f10; }
+.switch-row[aria-checked="true"] .switch::after { transform:translateX(18px); background:#ffffff; }
 .switch-row[aria-checked="true"] .switch-text, .switch-row[aria-checked="true"] .switch-text .ic { color:var(--accent); }
-
-/* install nudge (PWA) — retired: the button was removed */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation:none !important; transition:none !important; }
-  /* entrance/fade classes become inert no-ops — nothing to clean up */
   #recent .tile-enter { animation:none; }
   #recent img.thumb-enter { opacity:1; }
-  /* swipe feedback still works; only the motion stops. The gesture collapses
-     the chip via its JS fallback timers, so no animation means no residue. */
   .text-chip.snap, .file-chip.snap { transition:none; }
   .text-chip.deleting, .file-chip.deleting { animation:none; }
-  /* the countdown bar has no animation to run, so it would sit full-width */
   #undo-toast .undo-bar { display:none; }
 }
 
-/* ---------- UX pass overrides ---------- */
-/* (the strip's edge-fade mask and swipe travel window live with the base
-   .text-in rule above — one definition, not two) */
 /* ---------- swipe (down) to delete a PC-sent chip ---------- */
-/* The red fill is an INSET box-shadow: inset shadows paint OVER the pill's own
-   background but UNDER its content, so the label stays readable while the pill
-   reddens. Only --del (opacity) changes per frame — a single-element paint, no
-   layout, and the transform part of the gesture stays on the compositor. */
-/* the same gesture serves text/image chips and PC-sent file chips */
 .text-chip, .file-chip { box-shadow:inset 0 0 0 999px rgba(239,68,68, var(--del, 0)); }
 .text-chip.swiping, .file-chip.swiping {
   box-shadow:inset 0 0 0 999px rgba(239,68,68, var(--del, 0)), 0 10px 26px rgba(0,0,0,.5);
@@ -914,10 +768,8 @@ body.kb-open #text-expand { display:none; }
 }
 .text-chip.swiping .chip-when, .file-chip.swiping .f-sub,
 .media-chip.swiping .chip-sub { color:rgba(255,255,255,.82); }
-/* drop the strip's edge mask while a chip is lifted, or the drag clips at 14px */
 .text-in.swiping, #files.swiping { -webkit-mask-image:none; mask-image:none; }
 .text-chip.snap, .file-chip.snap { transition:transform .22s cubic-bezier(.22, .9, .28, 1); }
-/* the collapse keeps the lifted look — siblings don't reflow until it's removed */
 .text-chip.deleting, .file-chip.deleting {
   animation:chip-delete .26s ease-in forwards; pointer-events:none;
   z-index:6; transition:none;
@@ -925,107 +777,86 @@ body.kb-open #text-expand { display:none; }
 @keyframes chip-delete {
   to { opacity:0; transform:translateY(30px) scale(.85); }
 }
-/* failed tiles must be unmistakable: red border (the color signal) + a
-   readable label that names the STATE first and the action second (a tap opens
-   the viewer, which is where Retry send actually lives) — danger TEXT #fca5a5
-   on the page-bg token, not white-on-red (that pair fails AA at small sizes;
-   DESIGN.md §1) */
 #recent .failed { border:1px solid var(--danger); }
 #recent .failed::before {
-  content:'not sent — tap to retry'; position:absolute; inset:auto 0 0; z-index:2;
-  background:rgba(14,15,16,.88); color:#fca5a5; font-size:10.5px; font-weight:700;
-  text-align:center; padding:3px 0; border-radius:0 0 10px 10px;
+  content:'Not sent · Retry'; position:absolute; inset:auto 0 0; z-index:2;
+  background:rgba(10, 13, 22, 0.9); color:#fca5a5; font-size:10px; font-weight:700;
+  letter-spacing:-0.01em; text-align:center; padding:4px 6px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-top:1px solid rgba(255, 69, 58, 0.28);
+  border-radius:0 0 13px 13px;
 }
-/* RTL/long text: chips and textarea follow the text's own direction */
 .text-chip, #text-input { unicode-bidi:plaintext; }
 
 /* ---------- file transfer (any file, phone ⇄ PC) ---------- */
 .ic-file { --m:url('/icons/file.svg'); }
 #file-btn-label { color:var(--text); }
-/* #file-progress is no longer a visible band: transfer progress rides the status
-   strip's detail line (renderTransferStatus in phone.js) because the keyboard
-   used to hide this block outright, so a send in progress simply vanished. The
-   element stays in the DOM as the accessible copy of the same fact. .sr-only is
-   declared here, not borrowed from style.css — phone.html never loads it. */
 .sr-only {
   position:absolute; width:1px; height:1px; padding:0; margin:-1px;
   overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
 }
 
-/* transferred files (both directions) as chips, with a direction badge.
-   A HORIZONTAL strip — one row, scrolled sideways like the text chips above it.
-   As a vertical list this was a ~40px-tall window (max-height 30dvh) with a
-   hairline scrollbar: nearly nothing was visible, and the row you wanted was
-   usually below the fold. Its geometry (scroll, mask, swipe window, gutter) is
-   shared with #text-in — see the strip block in the text-sync section above.
-   File chips share the card anatomy with PC-sent capture chips — see the
-   "PC-sent rich content" block there too. Only the lane's own rows live here. */
-/* "more rows" — ONE control for both strips: a full-width centred row directly
-   under the strip it belongs to. The text lane's used to be an item INSIDE its
-   strip, so it sat past the last chip (1,164px on a lane with 7 rows), was
-   reachable only by scrolling the strip to its end, and the edge fade ate it —
-   while the files lane's was an always-visible row. Same job, two components. */
 .lane-more { width:100%; justify-content:center; }
 
 /* file action sheet (Save / Open) */
 #file-sheet {
-  position:fixed; inset:0; z-index:300; background:rgba(0,0,0,.75);
+  position:fixed; inset:0; z-index:300; background:rgba(4, 7, 15, 0.68);
+  -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
   display:grid; place-items:center;
 }
 #file-sheet.hidden { display:none; }
 #file-sheet-box {
-  width:min(92vw, 340px); background:var(--card); border:1px solid var(--border);
-  border-radius:14px; padding:18px; /* the ✕ lives INSIDE this box now */
+  width:min(92vw, 340px); background:rgba(18, 24, 42, 0.84); border:1px solid var(--border);
+  border-color:rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter:saturate(210%) blur(40px); backdrop-filter:saturate(210%) blur(40px);
+  box-shadow:0 24px 60px rgba(0, 0, 0, 0.62), var(--glass-highlight);
+  border-radius:22px; padding:18px;
   position:relative;
 }
 #file-sheet-box .fsh-name { font-size:14px; font-weight:600; color:var(--text); word-break:break-all;
-  padding-right:38px; /* clears the absolutely positioned ✕ on the first lines */ }
+  padding-right:38px; }
 #file-sheet-box .fsh-sub { font-size:11.5px; color:var(--muted); margin-top:4px; }
 #file-sheet-box .fsh-actions { display:flex; gap:8px; margin-top:14px; }
 #file-sheet-close {
-  position:absolute; top:6px; right:6px; width:44px; height:44px; /* full 44px tap target, inside the box */
-  border-radius:12px; border:1px solid transparent; background:none;
+  position:absolute; top:6px; right:6px; width:44px; height:44px;
+  border-radius:999px; border:1px solid transparent; background:rgba(255, 255, 255, 0.06);
   color:var(--muted); cursor:pointer; display:grid; place-items:center; font-size:15px;
 }
-#file-sheet-close:hover { color:var(--text); border-color:var(--border); }
+#file-sheet-close:hover { color:var(--text); border-color:var(--glass-border); }
 
-/* ---------- confirm dialog (phone) ----------
-   The phone twin of the PC's confirmDialog: Cancel is the default (and holds
-   focus), Esc and a backdrop tap cancel. Replaces window.confirm(), which
-   BLOCKS the main thread — and on mobile freezes every running animation while
-   the native prompt is up. z-index 400 is above the viewer (60) and the file
-   sheet (300), matching the ladder in DESIGN.md §7. */
+/* ---------- confirm dialog (phone) ---------- */
 #confirm {
-  position:fixed; inset:0; z-index:400; background:rgba(0,0,0,.75);
+  position:fixed; inset:0; z-index:400; background:rgba(4, 7, 15, 0.68);
+  -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px);
   display:grid; place-items:center; padding:18px;
   padding-bottom:max(18px, env(safe-area-inset-bottom));
 }
 #confirm.hidden { display:none; }
 #confirm-box {
-  width:min(92vw, 340px); background:var(--card); border:1px solid var(--border);
-  border-radius:14px; padding:18px;
+  width:min(92vw, 340px); background:rgba(18, 24, 42, 0.86); border:1px solid var(--border);
+  border-color:rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter:saturate(210%) blur(40px); backdrop-filter:saturate(210%) blur(40px);
+  box-shadow:0 24px 60px rgba(0, 0, 0, 0.65), var(--glass-highlight);
+  border-radius:22px; padding:18px;
 }
 #confirm-box .ct-title { font-size:15px; font-weight:650; color:var(--text); }
 #confirm-box .ct-body { margin-top:6px; font-size:12.5px; line-height:1.45; color:var(--muted); }
 #confirm-box .ct-actions { display:flex; gap:8px; margin-top:16px; }
 .cbtn {
   flex:1; min-height:44px; padding:0 14px;
-  background:var(--card2); border:1px solid var(--border); color:var(--text);
+  background:var(--card2); border:1px solid var(--border);
+  border-color:var(--glass-border);
+  box-shadow:var(--glass-highlight);
+  color:var(--text);
   border-radius:14px; font-size:15px; font-weight:600; font-family:inherit;
   cursor:pointer; touch-action:manipulation;
 }
 .cbtn:active { transform:scale(.98); }
-/* danger = #fca5a5 text + a red-tinted border (DESIGN.md §1) */
-.cbtn.danger { color:#fca5a5; border-color:rgba(239,68,68,.35); }
+.cbtn.danger { color:#fca5a5; border-color:rgba(239,68,68,.38); background:rgba(255, 69, 58, 0.14); }
 .cbtn.danger:active { border-color:var(--danger); }
 .cbtn:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 
-/* ---------- light-sweep feedback: a quiet mirror-sheen on BUTTONS ---------- */
-/* Transform-only animation, triggered on :active (thumb taps), so nothing runs at rest.
-   The chips are deliberately NOT in this list: the sweep is the one flourish
-   (DESIGN.md §6) and on a capture/file chip it streaks light across the single
-   part of the card that is content — the thumbnail. Dropping it also releases
-   the overflow:hidden the chips carried only to keep the streak inside. */
+/* ---------- light-sweep feedback ---------- */
 .alt-btn, .shutter, .vbtn {
   position: relative; overflow: hidden;
 }
@@ -1040,30 +871,18 @@ body.kb-open #text-expand { display:none; }
 }
 @keyframes sheen { to { transform: translateX(380%) skewX(-14deg); } }
 
-/* ---------- motion pass ----------
-   Opacity/transform only (compositor-friendly), 130–180ms, and covered by the
-   global `prefers-reduced-motion` block above. These surfaces are revealed by
-   dropping .hidden, which restarts a CSS animation on a REAL reveal only — the
-   no-op classList.toggle on an already-visible element changes nothing. */
+/* ---------- motion pass ---------- */
 @keyframes pp-fade { from { opacity:0; } }
 @keyframes pp-rise { from { opacity:0; transform:translateY(8px); } }
 @keyframes pp-pop  { from { opacity:0; transform:scale(.96); } }
 #inbox:not(.hidden) { animation:pp-fade .18s ease-out; }
-/* viewer: overlay + chrome settle in; the images own their transforms for
-   pan/zoom/navigation, so nothing animates those */
 #viewer:not(.hidden) { animation:pp-fade .13s ease-out; }
 #viewer:not(.hidden) #viewer-close { animation:pp-fade .16s ease-out; }
 #viewer:not(.hidden) #viewer-bar { animation:pp-rise .18s cubic-bezier(.2, .8, .3, 1); }
-/* the two phone dialogs: backdrop fades, box pops */
 #file-sheet:not(.hidden), #confirm:not(.hidden) { animation:pp-fade .13s ease-out; }
 #file-sheet:not(.hidden) #file-sheet-box,
 #confirm:not(.hidden) #confirm-box { animation:pp-pop .14s cubic-bezier(.2, .8, .3, 1); }
 
-/* press feedback on the flat controls: paint-only properties plus a 2–3%
-   compositor scale (the :active scales already existed — they just snapped).
-   The chip gestures keep their own transitions: `.swiping` disables them for
-   the duration of the drag and `.snap` owns the spring back, and both
-   out-specify this base list. */
 .alt-btn, .shutter, .vbtn, .cbtn, .linkbtn, .switch-row, #more-btn,
 #text-expand, #text-send, #viewer-close, #file-sheet-close,
 .text-chip, .media-chip, .file-chip {

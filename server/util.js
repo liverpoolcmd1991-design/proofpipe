@@ -7,6 +7,12 @@
 // server.js next to the (lazy) sharp import.
 import path from 'node:path';
 import os from 'node:os';
+import { randomBytes } from 'node:crypto';
+
+// 8-char hex token from CSPRNG for collision-free temp and stored filenames.
+export function randomToken(byteLen = 4) {
+  return randomBytes(byteLen).toString('hex');
+}
 
 // the four movables — helper for the media dirs under a base. The DB always
 // stays in DATA; only these three dirs move on relocation, so relocation never
@@ -90,10 +96,13 @@ export function lanIPs(nets) {
   for (const [name, addrs] of Object.entries(nets || os.networkInterfaces()))
     for (const a of addrs || [])
       if (a.family === 'IPv4' && !a.internal) out.push({ name, ip: a.address });
+  // 5 = RFC 3927 link-local (169.254.0.0/16 APIPA / cloud metadata): never
+  // routable across Wi-Fi/LAN, so it ranks dead last.
   // 4 = tunnel/virtual adapter: reachable from THIS PC only, never from the
   // phone, so it ranks below every real interface whatever its range. Otherwise
   // real LAN/hotspot ranges first; 172.16-31 is usually WSL/Docker virtual.
   const score = ({ name, ip }) =>
+    ip.startsWith('169.254.') ? 5 :
     VIRTUAL_NIC.test(name) ? 4 :
     ip.startsWith('192.168.') ? 0 :
     ip.startsWith('10.') ? 1 :

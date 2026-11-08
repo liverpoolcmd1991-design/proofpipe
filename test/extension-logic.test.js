@@ -166,7 +166,7 @@ test('dragFile: the tray drag declares the capture\'s REAL mime + extension', ()
   assert.equal(spec(7, '1789376112132-5tvxzu.jpeg'), 'image/jpeg proofpipe-7.jpg', 'jpeg normalizes to jpg, like pasteFileName');
   assert.equal(spec(8, 'shot.png'), 'image/png proofpipe-8.png');
   assert.equal(spec(9, 'pic.WEBP'), 'image/webp proofpipe-9.webp', 'extension match is case-insensitive');
-  assert.equal(spec(11, 'iphone.HEIC'), 'image/heic proofpipe-11.heic');
+  assert.equal(spec(11, 'phone.HEIC'), 'image/heic proofpipe-11.heic');
   assert.equal(spec(12, 'scan.tif'), 'image/tiff proofpipe-12.tif');
   // unknown/absent extension keeps the old jpeg fallback rather than a guess
   assert.equal(spec(3, 'mystery'), 'image/jpeg proofpipe-3.jpg');

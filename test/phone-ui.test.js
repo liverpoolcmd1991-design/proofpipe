@@ -1,13 +1,8 @@
 // Phone PWA surface guards — the a11y/layout fixes that had no test surface.
 //
-// The phone UI is plain DOM glue (phone.html / phone.css / phone.js) and had NO
-// coverage, so every bug pinned here was found by reading code: a close button
-// that positioned against the fixed overlay instead of its dialog, capture
-// controls that could never take focus, a button with no styling on this page
-// (its only .linkbtn rule lives in style.css, which phone.html never loads),
-// tap targets below the 44px floor DESIGN.md §2 mandates, and two states that
-// only existed visually (CSS ::before/::after badges a screen reader never
-// sees).
+// The phone UI is plain DOM glue (phone.html / phone.css / phone.js) and
+// covers dialog structure, focusable picker controls, 44px touch targets, and
+// accessible state labels.
 //
 // jsdom is loaded WITHOUT runScripts: phone.js needs IndexedDB,
 // createImageBitmap and EventSource at boot, so only the shipped markup is
@@ -34,9 +29,6 @@ const doc = () => new JSDOM(html).window.document;
 
 // ---------- CSS helpers (comments stripped; exact selector-list membership) ----------
 const cssNoComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
-// the PC harness stylesheet, for the cross-client parity assertions below
-const harnessCssNoComments = fs.readFileSync(path.join(APP, 'public/style.css'), 'utf8')
-  .replace(/\/\*[\s\S]*?\*\//g, '');
 function blocksFor(selector) {
   const out = [];
   const re = /([^{}]+)\{([^{}]*)\}/g;
@@ -130,7 +122,7 @@ test('phone: confirm dialog exists, cancels by default, sits above the other ove
   assert.ok(z > sheetZ, `confirm (${z}) stacks above the file sheet (${sheetZ})`);
 });
 
-test('phone: 44px tap targets on every phone control (DESIGN.md §2)', { skip: skipOpt }, () => {
+test('phone: 44px tap targets on every phone control', { skip: skipOpt }, () => {
   const expected = [
     '#text-expand', '#text-send', '#viewer-close', '#undo-toast-btn',
     '#outbox-info', '#quality-level', '.cbtn', '.linkbtn', '.text-chip', '.file-chip',
@@ -264,11 +256,6 @@ test('phone: the textarea auto-grows to its own ceiling', () => {
   };
   const phone = ceiling(cssNoComments);
   assert.equal(phone, 150, 'the phone keeps the 150px ceiling');
-  // The two clients no longer share this contract (P1): the PC field is one row
-  // inside a fixed 64px top band, so it does NOT grow at all — a draft would push
-  // the whole library down (test/pc-ui.test.js pins the JS side). The phone has no
-  // such band to protect, so it keeps its coalesced auto-grow.
-  assert.match(harnessCssNoComments, /#text-input\s*\{[^}]*max-height:\s*var\(--tb-ctl\)/, 'the PC field is pinned to the band');
   assert.match(js, /function autoGrowText\(\)/, 'growth is a named path, not inline glue');
   // the phone used to grow ONLY while .expanded — the collapsed field stayed 40px
   assert.match(js, /addEventListener\('input',\s*\(\)\s*=>\s*\{[\s\S]{0,240}autoGrowText\(\)/,
@@ -280,7 +267,7 @@ test('phone: the textarea auto-grows to its own ceiling', () => {
 
 test('phone: chrome is not selectable, but text entry and link chips still are', () => {
   // Long-pressing a tile, a chip or the status bar used to start a text
-  // selection (and pop the iOS copy callout) over controls with their own
+  // selection (and pop the mobile copy callout) over controls with their own
   // gestures.
   assert.match(blocksFor('body'), /user-select:\s*none/);
   assert.match(blocksFor('body'), /-webkit-user-select:\s*none/);

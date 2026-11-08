@@ -102,9 +102,12 @@ export function createSseHub(app, { logEvent = () => {}, maxClients = 100, onPho
 
   // call BEFORE app.close() on the shutdown path (see header comment)
   const destroyAll = () => {
+    clearInterval(heartbeat);
     for (const res of [...sseClients]) { try { res.destroy(); } catch {} }
     sseClients.clear();
     clientBrowsers.clear();
+    clientDevices.clear();
+    backedUp.clear();
   };
 
   // is a live extension for this browser id connected right now? (drives the

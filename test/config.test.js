@@ -70,14 +70,14 @@ test('ProofPipe.bat exports UV_THREADPOOL_SIZE before node runs', () => {
   assert.ok(setLine !== -1 && nodeLine !== -1 && setLine < nodeLine, 'export must precede the node launch');
 });
 
-test('server.js does not statically import better-sqlite3 or sharp', () => {
+test('server.js does not statically import sqlite or sharp', () => {
   // static ESM imports hoist ABOVE the env-var assignment and freeze the pool
   // at 4 — the exact bug the dynamic imports exist to avoid.
   assert.doesNotMatch(SERVER_JS, /^import\s+(Database|sharp)\b/m);
-  assert.match(SERVER_JS, /await import\(['"]better-sqlite3['"]\)/, 'better-sqlite3 must be imported dynamically');
+  assert.match(SERVER_JS, /await import\(['"]\.\/server\/sqlite\.js['"]\)/, 'sqlite adapter must be imported dynamically');
   assert.match(SERVER_JS, /await import\(['"]sharp['"]\)/, 'sharp must be imported dynamically');
   // the env var must be assigned before those dynamic imports in file order
   const envPos = SERVER_JS.indexOf('UV_THREADPOOL_SIZE');
-  const dbPos = SERVER_JS.indexOf("await import('better-sqlite3')");
+  const dbPos = SERVER_JS.indexOf("await import('./server/sqlite.js')");
   assert.ok(envPos !== -1 && dbPos !== -1 && envPos < dbPos, 'env var must be assigned before the dynamic native imports');
 });

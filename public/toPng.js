@@ -92,9 +92,8 @@ const toPng = (() => {
   });
   const closeCh = ch => { try { ch.port1.close(); } catch {} try { ch.port2.close(); } catch {} };
   return blob => new Promise((resolve, reject) => {
-    const done = (fn, v) => fn(v);
     const w = getWorker();
-    if (!w) return mainThreadPng(blob).then(p => done(resolve, p), reject);
+    if (!w) return mainThreadPng(blob).then(resolve, reject);
     const ch = new MessageChannel();
     const timer = setTimeout(() => { // safety net: never hang the copy action
       ch.port1.onmessage = null;
@@ -103,7 +102,7 @@ const toPng = (() => {
       // MessageChannel port) can't leak and wedge every future copy
       try { w.terminate(); } catch {}
       worker = null;
-      mainThreadPng(blob).then(p => done(resolve, p), reject);
+      mainThreadPng(blob).then(resolve, reject);
     }, 30000);
     ch.port1.onmessage = e => {
       clearTimeout(timer);
@@ -114,9 +113,10 @@ const toPng = (() => {
           workerBroken = true;
           try { w.terminate(); } catch {}
           worker = null;
+          mainThreadPng(blob).then(resolve, reject);
+        } else {
+          reject(new Error('encode failed'));
         }
-        if (error) mainThreadPng(blob).then(p => done(resolve, p), reject);
-        else reject(new Error('encode failed'));
       } else resolve(png);
     };
     try {
@@ -126,7 +126,7 @@ const toPng = (() => {
       closeCh(ch);
       workerBroken = true;
       worker = null;
-      mainThreadPng(blob).then(p => done(resolve, p), reject);
+      mainThreadPng(blob).then(resolve, reject);
     }
   });
 })();

@@ -141,31 +141,7 @@ try {
     }
   }, { root: $('#list'), rootMargin: '160px' });
 } catch { thumbObserver = null; }
-async function fetchMediaUrl(file) {
-  const safe = safeFile(file);
-  if (mediaUrlCache.has(safe)) return mediaUrlCache.get(safe);
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/media/${safe}`, { signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) });
-      if (r.ok) {
-        const u = URL.createObjectURL(await r.blob());
-        mediaUrlCache.set(safe, u);
-        return u;
-      }
-    } catch {}
-  }
-  // normalize: SW path gives a dataURL string — convert to object URL like above
-  try {
-    const dataUrl = await bg({ type: 'dataUrl', file });
-    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return '';
-    const u = URL.createObjectURL(await (await fetch(dataUrl)).blob());
-    mediaUrlCache.set(safe, u);
-    return u;
-  } catch {}
-  return '';
-}
-
-// raw Blob of a media file (for clipboard re-encode)
+// raw Blob of a media file (for clipboard re-encode and object URLs)
 async function fetchMediaBlob(file) {
   const safe = safeFile(file);
   for (const base of await candidateBases()) {
@@ -175,11 +151,25 @@ async function fetchMediaBlob(file) {
     } catch {}
   }
   try {
+    const blob = await bg({ type: 'mediaBlob', file });
+    if (blob instanceof Blob) return blob;
+  } catch {}
+  try {
     const dataUrl = await bg({ type: 'dataUrl', file });
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
     return await (await fetch(dataUrl)).blob();
   } catch {}
   return null;
+}
+
+async function fetchMediaUrl(file) {
+  const safe = safeFile(file);
+  if (mediaUrlCache.has(safe)) return mediaUrlCache.get(safe);
+  const blob = await fetchMediaBlob(file);
+  if (!blob) return '';
+  const u = URL.createObjectURL(blob);
+  mediaUrlCache.set(safe, u);
+  return u;
 }
 
 // toPng comes from the shared toPng.js loaded before popup.js

@@ -1,1471 +1,1898 @@
-﻿:root {
-  /* Surface steps are MEASURED (DESIGN.md §1). The old set sat 1.07–1.16:1
-     apart — a card on the page was a visual no-op. --faint moves with --card2
-     because its ≥4.5:1 contract is against the surfaces, and the lighter card2
-     would otherwise drop it to 4.2:1. */
-  /* v1.20.0 darkened every SURFACE and every text tier: the window read as a
-     bright field of grey cards. The three steps stay measured (card is still
-     ~1.09:1 off the page, card2 ~1.08:1 off the card) and every contract
-     IMPROVED — darker surfaces only raise contrast for --faint (5.13:1 on
-     --card2, was 4.7), --muted (6.28:1) and --ctl (3.63:1, was 3.13). */
-  --bg: #08090a; --card: #131518; --card2: #1a1d20;
-  --border: #2b2f33; /* passive dividers ONLY — cards, band rules, dialog boxes,
-     separators, info boxes. NEVER a control outline (see --ctl). */
-  --ctl: #6e757c; /* interactive control boundaries — clears 3:1 on --bg, --card AND --card2 (WCAG 1.4.11). Wired in BOTH UIs. */
-  --ctl-hover: #868d94; /* the hover step above --ctl: 4.35:1 on --card2, 4.93:1 on --card,
-     5.71:1 on --bg. Replaces the grandfathered #4a4d50, which measured 1.95:1 on --card —
-     a hover state nobody could see. */
-  --text-bright: #e9eae8; --text: #d6d8d5; --muted: #9b9ea0;
-  --faint: #8b8e90; /* tertiary text — ≥4.5:1 on BOTH --card and --card2 (5.55:1 / 5.13:1) */
-  --accent: #22c55e; --danger: #ef4444;
-  /* The INVERTED surface — the system's one emphasis fill (the active view
-     segment, the bulk bar's primary, the phone's shutter). It was pure #fff,
-     which was the brightest thing on a 15px-text screen by a wide margin;
-     --inv is the same idea one step down (14.7:1 against --card, so it is still
-     unmistakably the loudest surface) and --inv-fg is what sits on it. */
-  --inv: #e4e7e3; --inv-fg: #0b0c0d;
-  --seg: #171a1c; /* the ONE segmented-control track: a track that carries the container
-     outline lets its items drop theirs, which is how the toolbar row reaches a single
-     32px height with one boundary instead of four (DESIGN.md §1/§7). 1.05:1 on --card —
-     the painted track is a slot; --ctl is what makes it a control. */
-  --topbar-h: 64px; /* the unified brand + compose band: 9px + a 44px control + 9px +
-     the band rule. The content box is 45px, so the 44px field never binds it. */
+:root {
+  /* Liquid Glass System Palette */
+  --bg: #030408;
+  --bg-canvas: #05060b;
+  --glass-bg: linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.115) 0%,
+      rgba(255, 255, 255, 0.038) 46%,
+      rgba(255, 255, 255, 0.068) 100%
+    ),
+    rgba(18, 20, 28, 0.62);
+  --glass-elevated: linear-gradient(
+      155deg,
+      rgba(255, 255, 255, 0.15) 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      rgba(255, 255, 255, 0.085) 100%
+    ),
+    rgba(24, 26, 36, 0.78);
+  --glass-pill: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.14) 0%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+  --glass-pill-hover: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0.11) 100%
+    );
+  --glass-well: rgba(4, 6, 12, 0.44);
+  --border: rgba(255, 255, 255, 0.12);
+  --border-highlight: rgba(255, 255, 255, 0.22);
+  --specular-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.25), inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --ctl: rgba(255, 255, 255, 0.2);
+  --text-strong: #ffffff;
+  --text: #ebebf5;
+  --muted: rgba(235, 235, 245, 0.6);
+  --accent: #30d158;
+  --blue: #0a84ff;
+  --cyan: #64d2ff;
+  --indigo: #5e5ce6;
+  --amber: #ff9f0a;
+  --danger: #ff453a;
+  --tb-ctl: 38px;
+  /* Ultra-responsive, fast spring physics */
+  --spring: cubic-bezier(0.2, 0.9, 0.25, 1);
+  --spring-fast: cubic-bezier(0.25, 1, 0.35, 1);
+  --font-sans: -apple-system, "SF Pro Display", "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
-* { box-sizing: border-box; }
-html, body { height: 100%; }
-body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-  overflow: hidden; /* the app fits the viewport — inner panes scroll instead */
-  /* column flex instead of a `calc(100dvh - <header px>)` magic number: the
-     header is flex:none and .app takes the remainder, so header padding/font
-     changes can never desync the two. Fixed overlays are out of flow. */
-  display: flex; flex-direction: column;
-  /* the harness is an APPLICATION, not a document: dragging across tiles,
-     labels or the stats box must never leave a blue text smear behind.
-     Anything the user copies on purpose opts back in — see the rule below. */
-  user-select: none; -webkit-user-select: none;
-}
-/* text ENTRY stays selectable, and so do the values a user copies by hand
-   (the LAN URL, the storage paths — a path that can't be selected can't be
-   pasted into Explorer) */
-input, textarea, select,
-#lan-url, #dir-current, .dir-manual, .storage-path {
-  user-select: text; -webkit-user-select: text;
-}
-/* The brand row and the compose bar are ONE band. They used to be two stacked
-   bands (a ~49px header whose right half was permanently empty, plus a ~69px
-   compose bar holding a 1338px-wide single-line field) — 118px of chrome for one
-   idea. Merging them returns ~54px to the library and puts the field, Send, the
-   status and Settings on one baseline; see DESIGN.md §7. */
-header {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  height: var(--topbar-h); padding: 9px 24px;
-  border-bottom: 1px solid var(--border); flex: none;
-  /* same 1800px column as main and #text-bar: on ultrawide displays a
-     full-bleed header border left a visible seam at the edges */
-  align-self: center; width: 100%; max-width: 1800px;
-}
-.brand { flex: none; display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-.logo {
-  width: 28px; height: 28px; border-radius: 8px; background: var(--card2);
-  border: 1px solid var(--border); display: grid; place-items: center; font-size: 14px;
-}
-.app {
-  flex: 1 1 auto; min-height: 0;
-  display: flex; flex-direction: column; overflow: hidden;
-}
-main { flex: 1 1 auto; min-height: 0; max-width: 1800px; width: 100%; margin: 0 auto; padding: 20px 32px; }
-/* 264px, not 320. 320px is 22% of a 1440px window and, once the phone is
-   paired, the QR leaves — the column measured 45% empty at 1440×900 and 56% at
-   1920×1080. The rail earns its width now (status · capacity · Recent), so the
-   column can be narrower AND fuller. minmax(0,1fr) on the second track, not a
-   bare 1fr: `1fr` is `minmax(auto,1fr)` and grows to its MIN-CONTENT size, so
-   one unbreakable token in the card would inflate the column (DESIGN.md §7). */
-.view { height: 100%; display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 22px; align-items: stretch; }
-/* Below 900px the rail is a DRAWER. It used to be a second grid row capped at
-   40dvh with its own scrollbar, beside the library's own scroller — TWO nested
-   scroll regions in a 700px window (measured: the 780×700 rail overflowed its
-   280px cap by 108.9px). Out of flow, on a veil, there is exactly one. */
-@media (max-width: 899px) {
-  .view { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
-  .card.side {
-    position: fixed; top: var(--topbar-h); right: 0; bottom: 0;
-    width: min(320px, 88vw); z-index: 320; border-radius: 0;
-    /* closed = off-canvas AND out of the tab order: a translated panel is still
-       focusable, so the drawer would otherwise swallow Tab with no way to see
-       where focus went */
-    transform: translateX(101%); visibility: hidden;
-    transition: transform .18s cubic-bezier(.2,.8,.3,1), visibility .18s;
-  }
-  .card.side.open { transform: none; visibility: visible; }
-}
-.hidden { display: none !important; }
 
-.card {
-  background: var(--card); border: 1px solid var(--border);
-  border-radius: 16px; padding: 18px; min-height: 0;
+* {
+  box-sizing: border-box;
 }
-.card.side { text-align: left; overflow-y: auto; padding: 14px; scrollbar-width: thin; }
-.card.side h3 { margin: 0; }
-/* the drawer trigger exists only where the rail is a drawer */
-#rail-toggle { display: none; flex: none; }
-#rail-backdrop { position: fixed; inset: var(--topbar-h) 0 0 0; z-index: 310; background: rgba(0,0,0,.55); display: none; }
-/* ...and so does the veil. Deliberately a SECOND media block, here, rather than
-   on the breakpoint block above: `#rail-toggle { display: none }` and the
-   drawer's `display: grid` have the SAME specificity (one id each), so source
-   order decides — and the base rule sits 20 lines below the first block, which
-   left the trigger permanently hidden and the rail unreachable below 900px.
-   Measured: `getComputedStyle('#rail-toggle').display === 'none'` at 800px. */
-@media (max-width: 899px) {
-  #rail-toggle { display: grid; }
-  #rail-backdrop:not(.hidden) { display: block; }
-}
-/* gear button sits at the card's top-right, opposite the connection pill */
-.settings-btn { color: var(--muted); }
-.settings-btn:hover { color: var(--text); }
-.card h3 { margin: 0 0 10px; font-size: 16px; color: var(--text-bright); font-weight: 650; letter-spacing: .01em; }
-.muted { color: var(--muted); font-size: 13px; }
-.faint { color: var(--faint); font-size: 12px; }
-.mono { font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
-/* uppercase micro-label (section eyebrows) */
-.eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 650; color: var(--muted); }
-/* data readouts use tabular figures so counts/bytes/timestamps don't jitter */
-.tnum, .capture .meta, #cap-count, #bulk-count, #stats { font-variant-numeric: tabular-nums; }
-.pill {
-  display: inline-flex; align-items: center; gap: 8px; font-size: 13px;
-  background: var(--card2); border: 1px solid var(--border);
-  border-radius: 999px; padding: 5px 12px; margin-bottom: 10px;
-}
-.dot { width: 8px; height: 8px; border-radius: 50%; }
-.dot.ok { background: var(--accent); }
-.dot.off { background: var(--danger); }
-#outbox-badge {
-  margin-left: 4px; padding: 1px 8px; border-radius: 999px;
-  background: #f59e0b; color: #000; font-size: 11px; font-weight: 700;
-  /* the badge carries a mask icon now, not a 📦 glyph (emoji ignore
-     currentColor, render per-OS and are announced verbosely) */
-  display: inline-flex; align-items: center; gap: 4px;
-}
-#outbox-badge .ic { width: 11px; height: 11px; vertical-align: 0; }
-#qr { display: block; margin: 6px auto; width: 176px; height: 176px; } /* fixed size: sidebar fits without scrolling, still scans instantly */
-#nic-sel { display: block; width: 100%; max-width: 220px; margin: 0 auto 6px; }
-/* 28px target (WCAG 2.5.8): the LAN URL is a real link and measured 202x17.3.
-   Centred as a flex box so the padded hit area stays on the card's axis. */
-#lan-url { text-align: center; margin: 4px 0 0; text-decoration: none; color: var(--muted); min-height: 28px; display: flex; align-items: center; justify-content: center; }
-#lan-url:hover { color: var(--accent); text-decoration: underline; }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  background-color: var(--bg-canvas);
+  background-image:
+    radial-gradient(circle 680px at 12% 8%, rgba(10, 132, 255, 0.24), transparent 70%),
+    radial-gradient(circle 620px at 88% 12%, rgba(48, 209, 88, 0.17), transparent 68%),
+    radial-gradient(circle 760px at 52% 92%, rgba(94, 92, 230, 0.2), transparent 72%),
+    radial-gradient(circle 480px at 78% 54%, rgba(100, 210, 255, 0.11), transparent 65%);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.48;
+  letter-spacing: -0.012em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-/* auto-copy toggle: snap on the phone → ready to Ctrl+V (minimal dark switch) */
-/* The LABEL is the click target for a switch (it wraps the input), and it
-   measured 22px tall against the 28px minimum. min-height goes on the label,
-   not the track: growing the painted 38x22 switch would make every toggle in
-   Settings visibly chunkier to fix a hit-area problem. */
-.auto-copy-toggle {
-  display: flex; align-items: center; gap: 10px; margin-top: 12px;
-  font-size: 12.5px; color: var(--muted); cursor: pointer; text-align: left;
-  line-height: 1.4; user-select: none; min-height: 28px;
-}
-.auto-copy-toggle:hover { color: var(--text); }
-.auto-copy-toggle input,
-.show-all-toggle input {
-  appearance: none; -webkit-appearance: none; flex: none;
-  width: 38px; height: 22px; margin: 0; cursor: pointer; outline: none;
-  border-radius: 999px; background: var(--card2); border: 1px solid var(--ctl);
-  position: relative; transition: background .18s ease, border-color .18s ease, box-shadow .18s ease;
-}
-.auto-copy-toggle input::after,
-.show-all-toggle input::after {
-  content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
-  border-radius: 50%; background: var(--muted);
-  transition: transform .18s ease, background .18s ease;
-}
-.auto-copy-toggle input:checked,
-.show-all-toggle input:checked { background: var(--accent); border-color: var(--accent); }
-.auto-copy-toggle input:checked::after,
-.show-all-toggle input:checked::after { transform: translateX(16px); background: #0e0f10; }
-/* ONE switch anatomy for both toggle classes — the Merge switch used to be a
-   second, smaller copy with outline:none and no focus replacement (invisible Tab) */
-.auto-copy-toggle input:focus-visible,
-.show-all-toggle input:focus-visible { box-shadow: 0 0 0 2px rgba(34,197,94,.35); }
-
-/* storage folder row: one line — ellipsized path plus Change button */
-.storage-row { display: flex; align-items: center; gap: 8px; align-self: stretch; text-align: left; }
-.storage-path { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; }
-.mini-btn {
-  flex: none; background: var(--card2); border: 1px solid var(--ctl);
-  color: var(--text); border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer;
-  min-height: 28px; /* was 24px — the three settings storage rows are real controls */
-}
-.mini-btn:hover { border-color: var(--ctl-hover); }
-.mini-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-/* the compose group: the recent-texts glance + the field it belongs to. The
-   group hugs its content and takes the band's free space as a left margin, so
-   the pair sits at the band's end, which is where Send already sat.
-   #text-bar keeps its own `margin-left: auto` (pinned by test/pc-ui.test.js):
-   inside a content-sized group there is no free space for it to consume, so it
-   is inert here and the field stays welded to the glance beside it. */
-.compose-group {
-  flex: 0 1 auto; min-width: 0; margin-left: auto;
-  display: flex; align-items: center; gap: 14px;
-}
-/* the field itself: a DEFINITE 560px — a field the width of the window is a
-   measure nobody reads — with one Send and one disclosure after it.
-   Definite `width`, not `flex-basis: 560px`: an auto-sized flex item contributes
-   its CONTENT width to its parent's intrinsic size, so the group above measured
-   itself 517px (210 glance + 14 + the textarea's own 185px) and then shrank the
-   field to 185px to fit. A definite width is the item's contribution, so the
-   group comes out 210 + 14 + 560 = 784px and the field keeps its measure.
-   Measured at 1440×900: #text-input 452px (was 185px with the flex-basis). */
-#text-bar {
-  flex: 0 1 auto; width: 560px; min-width: 0; margin-left: auto;
-  display: flex; gap: 10px; align-items: center;
-  position: relative; /* containing block for the #text-history dropdown below */
-}
-#text-input {
-  flex: 1; min-width: 0; resize: none;
-  background: var(--card2); border: 1px solid var(--ctl); color: var(--text);
-  border-radius: 10px; padding: 10px 14px; font: 14.5px/1.5 system-ui, sans-serif;
-  /* --tb-ctl is the ONE height the band's controls share (see #text-bar .toolbtn).
-     42px was BELOW the field's own single-line content box, so min-height never
-     bound and the field settled at ~43.75px while the buttons sat at 38px. */
-  /* ONE row, always. The field used to auto-grow to 150px, which was fine in a
-     bar that sized itself and is wrong in a fixed 64px band — a long draft would
-     push the whole library down. Long drafts scroll inside the field instead
-     (DESIGN.md §7, Inputs), and Send can never move. */
-  height: var(--tb-ctl); min-height: var(--tb-ctl); max-height: var(--tb-ctl);
-  overflow-y: auto;
-}
-#text-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(34,197,94,.15); }
-/* The field and Send are ONE control group, so they share a height and a radius.
-   They used to disagree: the field measured ~44px/10px and its buttons 38px/8px
-   (a 6px step and a 2px corner mismatch, centres 3px apart), which is what made
-   the send button look like it belonged to a different row. `align-self:stretch`
-   is NOT the fix — a band must be able to trust the height of what is in it. */
-#text-bar { --tb-ctl: 44px; }
-#text-bar .toolbtn {
-  flex: none;
-  height: var(--tb-ctl); min-width: var(--tb-ctl); border-radius: 10px;
-  padding: 0 12px; font-size: 0;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-#text-bar .toolbtn .ic { width: 16px; height: 16px; }
-/* ---------- the recent-texts glance (in the band, beside the field) ---------- */
-/* ONE text, right beside the field it belongs to: "what did I just send / what
-   did my phone say" is answered where the eye already is when typing, and the
-   whole conversation is one click away (the band's mail icon → #texts-backdrop).
-   It lived ABOVE the captures grid before, where it was 178.5px in its two-row
-   form — the first thing on the screen, pushing the first capture row to y271 in
-   an app whose purpose is those captures. Here it costs the grid nothing: an
-   11px label over one 28px row is 41px of the band's 46px content box, and the
-   width is a fixed 210px, so the field's measure never moves. Below 1024px the
-   band cannot hold brand (117) + the glance (210) + the field (560) + the gaps
-   and the drawer trigger (needs ~1009px), so the glance stands down and the mail
-   icon carries the whole job alone — the same width-gating the filter chips use. */
-.text-recent {
-  flex: none; width: 210px; display: flex; flex-direction: column; gap: 2px;
-}
-/* the label is a caption, not a row: line-height 1 keeps the stack inside the
-   band's 46px content box (11 + 2 + 28) instead of inheriting body 1.4 */
-.text-recent .eyebrow { line-height: 1; }
-@media (max-width: 1023px) { #text-recent { display: none; } }
-.text-rows { display: flex; flex-direction: column; gap: 4px; }
-/* rows are real <button>s (the old clickable divs had no tab stop). ONE
-   definition: the skin and the flex layout used to be two rules for the same
-   element (the guard in test/harness-ui.test.js counts them). */
-.text-item {
-  display: flex; gap: 9px; align-items: center; min-height: 28px;
-  font: inherit; font-size: 13px; color: var(--text); text-align: left; width: 100%;
-  background: var(--card); border: 1px solid var(--ctl);
-  border-radius: 8px; padding: 4px 10px; cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.text-item:hover { border-color: var(--ctl-hover); }
-.text-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* the full-conversation dialog: same shell as Settings, one row per text */
-.texts-hint { font-size: 12px; }
-.texts-list { display: flex; flex-direction: column; gap: 5px; }
-/* the strip clips to one line (a glance), the dialog is where a text is READ,
-   so its rows wrap instead of truncating */
-.texts-list .text-item { white-space: normal; }
-.texts-empty { font-size: 12.5px; }
-
-/* inline lucide icons (stroke SVGs used as colorable masks) */
-.ic {
-  display: inline-block; width: 1em; height: 1em; vertical-align: -0.12em;
-  background-color: currentColor;
-  -webkit-mask: var(--m) center / contain no-repeat;
-  mask: var(--m) center / contain no-repeat;
-}
-.ic-send { --m: url('/icons/send-horizontal.svg'); }
-.ic-plus { --m: url('/icons/plus.svg'); }
-.ic-copy { --m: url('/icons/clipboard-copy.svg'); }
-.ic-download { --m: url('/icons/download.svg'); }
-.ic-x { --m: url('/icons/x.svg'); }
-.ic-trash { --m: url('/icons/trash-2.svg'); }
-.ic-chev-l { --m: url('/icons/chevron-left.svg'); }
-.ic-chev-r { --m: url('/icons/chevron-right.svg'); }
-.ic-pipe { --m: url('/icons/pipe.svg'); }
-.ic-package { --m: url('/icons/package.svg'); }
-.ic-upload { --m: url('/icons/upload.svg'); }
-.ic-alert { --m: url('/icons/triangle-alert.svg'); }
-.ic-sort { --m: url('/icons/arrow-up-down.svg'); }
-/* the webcam-scan trigger (PC harness): a scan-line reads as "capture a page",
-   which a plain camera glyph next to the phone's own capture does not. */
-.ic-scan { --m: url('/icons/scan-line.svg'); }
-.ic-more { --m: url('/icons/more-vertical.svg'); }
-.ic-external { --m: url('/icons/external-link.svg'); }
-.ic-grid-3x3 { --m: url('/icons/grid-3x3.svg'); }
-.ic-grid-2x2 { --m: url('/icons/grid-2x2.svg'); }
-.ic-square { --m: url('/icons/square.svg'); }
-/* the drawer trigger. Below 900px the rail is out of flow, so nothing in the
-   band would otherwise reveal the status card, the capacity meter and the
-   Recent list — they would simply not exist on a laptop-width window. */
-.ic-activity { --m: url('/icons/activity.svg'); }
-/* recent-arrival glyphs: a capture is an image, a transfer is a file. The KIND
-   is the glyph and the DIRECTION is its colour (see .rail-list .r-in/.r-out). */
-.ic-image { --m: url('/icons/images.svg'); }
-.ic-file { --m: url('/icons/file.svg'); }
-/* the texts dialog's trigger in the band: the whole conversation, one list */
-.ic-mail { --m: url('/icons/mail.svg'); }
-
-/* min-width:0 is load-bearing: a grid item defaults to min-width:auto, which
-   resolves to its MIN-CONTENT size, and `1fr` is really `minmax(auto, 1fr)` — so
-   the track grew to fit the widest unbreakable thing in the card. A 120-char
-   file name (nowrap in .f-name, and `min-width:0` on .f-info only allows
-   shrinking DURING layout, it cannot lower a min-content contribution) pushed
-   the column to 1104px, the card 80px past the viewport's right edge and the
-   whole page into a horizontal overflow. With min-width:0 the track keeps its
-   share and the name ellipsizes, which is what .f-name was always meant to do. */
-.main-card { display: flex; flex-direction: column; min-width: 0; }
-.capture-grid {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--tile, 150px), 1fr));
-  gap: 12px; align-content: start; padding: 2px;
+/* Custom Liquid Glass Scrollbars (eliminates Windows-style scrollbar arrows) */
+* {
   scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
 }
-/* thumbnail density toggle (icon, segmented control) */
-/* keyboard-nav target highlight. The tile itself is no longer focusable — its
-   .capture-open surface is (see buildCell) — so the ring is lifted back onto
-   the tile with :has(), and :focus-visible (not :focus) means a mouse click no
-   longer leaves a green outline behind. */
-.capture.kfocus,
-.capture:has(.capture-open:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--accent); }
-/* selection badge — transfer ROWS only now (a tile carries a real .pick box) */
-.sel-check {
-  position: absolute; top: 6px; left: 6px; z-index: 2;
-  width: 20px; height: 20px; border-radius: 50%;
-  background: var(--accent); color: #000; font-size: 13px; font-weight: 800;
-  display: grid; place-items: center; box-shadow: 0 1px 6px rgba(0,0,0,.5);
-}
-/* The tile's SELECTION BOX. Always present (quiet at rest, green when on) — the
-   only handle selection ever had before was a green ✓ that appeared AFTER you had
-   already picked, from a mode you entered through the ⋯ menu.
-   It sits in the META row's left corner, never on the thumbnail: the thumbnail's
-   top-right is the action panel, and on a 110px S-density tile a 92px panel
-   starting 6px from the right edge would sit on top of a top-left box.
-   The painted box is 20px; the TARGET is 28px through an invisible `inset` — the
-   second and last hit-area exception in this file, for the same reason as the
-   toast's undo (a 28px green square on a 110px tile is not a checkbox, it is a
-   third of the picture). Its neighbours are the meta text, which is inert. */
-.pick {
-  appearance: none; -webkit-appearance: none;
-  position: absolute; bottom: 4px; left: 4px; z-index: 2;
-  width: 20px; height: 20px; margin: 0; padding: 0; cursor: pointer;
-  background: rgba(0,0,0,.55); border: 1.5px solid var(--ctl-hover); border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.45);
-  transition: background-color .14s ease, border-color .14s ease, transform .12s ease;
-}
-.pick::after { content: ''; position: absolute; inset: -4px; border-radius: 8px; }
-.pick:hover { border-color: var(--accent); background: rgba(0,0,0,.7); }
-.pick:active { transform: scale(.94); }
-.pick:checked {
-  background: var(--accent) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='none' stroke='%230b0c0d' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round' d='M4.5 12.5l5 5L19.5 6.5'/></svg>") center / 14px no-repeat;
-  border-color: var(--accent);
-}
-.pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* skeleton loaders — same square shape as real thumbnails */
-.capture.skel { pointer-events: none; }
-/* the sweep is a translated gradient overlay, not an animated background-
-   position: the old version repainted 12 tiles every frame for the whole load,
-   the new one is compositor-only (H1 in the UI/UX audit). */
-.skel-img {
-  position: relative; overflow: hidden;
-  width: 100%; aspect-ratio: 1 / 1; border-radius: 11px 11px 0 0;
-  background: var(--card2);
-}
-.skel-img::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  background: linear-gradient(100deg, transparent 35%, #26282b 50%, transparent 65%);
-  transform: translateX(-100%);
-  animation: shimmer 1.2s infinite linear;
-}
-@keyframes shimmer { to { transform: translateX(100%); } }
-/* undo button inside toasts.
-   The painted pill stays compact; the TARGET is >=28px tall (WCAG 2.5.8 — it
-   measured ~20px). This is the one place a pseudo-element is the right tool:
-   growing the pill to 28px would make EVERY toast 8px taller (38 → 46px) to
-   serve a control most toasts do not have. Nothing else inside a toast is
-   interactive, so the invisible expansion cannot steal a click from a neighbour
-   — and it stays inside the toast's own 9px padding, so the toast's
-   `overflow: hidden` never clips it. */
-.toast-undo {
-  position: relative;
-  margin-left: 10px; border: none; cursor: pointer; font-weight: 700;
-  background: #000; color: #fff; border-radius: 999px; padding: 3px 12px; font-size: 12px;
-}
-.toast-undo::after { content: ''; position: absolute; inset: -5px -3px; border-radius: 999px; }
-.toast-undo:hover { background: #222; }
-/* text rows: direction ICON + message + time. The direction used to be the two
-   words "← phone" / "→ phone", which pushed the message 46px in and read as part
-   of the text; the glyph the rest of the app already uses for the same fact (and
-   the same colours) says it in 12px. */
-.text-item .t-dir { flex: none; font-size: 15px; }
-.text-item .t-dir.in { color: var(--accent); }
-.text-item .t-dir.out { color: #60a5fa; }
-.text-item .t-body { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.text-item .t-when { flex: none; color: var(--muted); font-size: 11px; }
-/* phone-not-connected warning */
-.hint .warn { color: #fbbf24; }
-/* in-app confirm dialog */
-#confirm-backdrop {
-  position: fixed; inset: 0; z-index: 400;
-  background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
-  display: grid; place-items: center;
-}
-#confirm-backdrop.hidden { display: none; }
-.confirm-box {
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px;
-  padding: 20px 22px; max-width: 380px; box-shadow: 0 12px 60px rgba(0,0,0,.6);
-}
-.confirm-box p { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; }
-.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.confirm-actions .btn { padding: 7px 16px; }
-.confirm-actions .btn.danger { color: #fca5a5; border-color: var(--danger); }
-.confirm-actions .btn.danger:hover { background: rgba(239,68,68,.12); }
-.btn.ghost { background: none; }
-.toolbtn.ghost { background: none; }
-/* storage folder picker modal */
-#dir-backdrop {
-  /* 370: ABOVE #settings-backdrop (350). This dialog is only ever opened from
-     the settings modal, and at 300 it rendered UNDERNEATH that modal's veil —
-     dimmed, and every click in it landed on the settings backdrop instead (so a
-     mouse user could not change the storage folder at all). A dialog opened
-     from a modal must outrank it; the ladder is documented in DESIGN.md §7. */
-  position: fixed; inset: 0; z-index: 370;
-  background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
-  display: grid; place-items: center; padding: 20px;
-}
-#dir-backdrop.hidden { display: none; }
-.dir-box {
-  width: min(94vw, 460px); background: var(--card); border: 1px solid var(--border);
-  border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px;
-  box-shadow: 0 12px 60px rgba(0,0,0,.6);
-}
-.dir-title { font-size: 14px; font-weight: 650; color: var(--text-bright); }
-.dir-current { font-size: 12px; color: var(--muted); word-break: break-all; }
-.dir-hint { font-size: 12px; }
-.dir-manual {
-  background: var(--card2); border: 1px solid var(--ctl); color: var(--text);
-  border-radius: 8px; padding: 8px 10px; font-size: 13px; width: 100%;
-}
-.dir-manual:focus { outline: none; border-color: var(--accent); }
-.dir-err { font-size: 12.5px; color: #fca5a5; }
-.dir-actions { display: flex; gap: 8px; justify-content: flex-end; }
-/* rotate icon */
-.ic-rotate { --m: url('/icons/rotate-cw.svg'); }
-.ic-gear { --m: url('/icons/settings.svg'); }
-/* origin icons: where a capture came from */
-.ic-phone { --m: url('/icons/smartphone.svg'); }
-.ic-pc { --m: url('/icons/monitor.svg'); }
-.origin {
-  width: 12px; height: 12px; margin-right: 4px; vertical-align: -1.5px;
-  color: var(--accent); /* phone = accent green; PC origin is muted */
-}
-/* PC content is BLUE everywhere — DESIGN.md §1 direction identity. It used to
-   be --muted here while .origin-chip.pc and the transfer rows were #60a5fa, so
-   the sidebar legend and the tile badge disagreed about the same capture. */
-.origin.ic-pc { color: #60a5fa; }
-/* Origin pill inside the thumbnail (bottom-left): the same badge at every grid
-   density — a meta-row icon was easy to miss on medium/large tiles.
-   PC ORIGIN ONLY. Most captures come from the phone, so a "from phone" badge is
-   on 14 of 14 tiles and tells the user nothing — DESIGN.md §7: "a badge must
-   mark the EXCEPTION, not the normal case." The phone-origin half of this rule
-   is gone, and with it 14 badges. */
-.origin-chip {
-  position: absolute; left: 6px; bottom: 6px; z-index: 2;
-  display: grid; place-items: center;
-  width: 22px; height: 22px; border-radius: 7px;
-  background: rgba(0, 0, 0, .62);
-}
-.origin-chip .ic { width: 13px; height: 13px; margin: 0; vertical-align: 0; color: #60a5fa; }
-/* missing thumbnail mid-self-heal: neutral tile instead of broken-image icon */
-.capture img.thumb-missing { visibility: hidden; }
-/* undo toast: shrinking bar shows the window closing */
-.toast { overflow: hidden; }
-/* scaleX, not width: the bar shrinks for a full 10s and animating a layout
-   property repaints every frame (H2 in the UI/UX audit). */
-.toast-undo-bar {
-  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
-  transform-origin: left center;
-  background: rgba(0,0,0,.25); animation-name: toast-shrink; animation-timing-function: linear; animation-fill-mode: forwards;
-}
-@keyframes toast-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-.capture {
-  background: var(--card2); border: 1px solid var(--ctl); border-radius: 12px;
-  position: relative; cursor: pointer;
-  /* NOTE: no overflow:hidden here on purpose. A hidden-overflow GRID ITEM
-     reports a zero content contribution to auto row sizing, so Chrome sizes
-     the rows to an equal share of the container instead of the tile content —
-     on medium/large densities the rows shrank below the square thumbnail and
-     clipped the image + meta row. The tile's rounded top corners are clipped
-     by .thumb instead; the meta row and background need no clipping (the tile
-     background already follows border-radius). */
-  content-visibility: auto;
-  contain-intrinsic-size: auto calc(var(--tile, 150px) + 32px);
-}
-/* square thumbnail that scales with the density toggle: every option shows the
-   same square crop (cover never distorts), and the tile grows taller with the
-   tile size instead of pinning the image at 110px while the tile widens to
-   210-250px (which cropped photos into unrecognizable bands on M and L) */
-.capture .thumb { position: relative; overflow: hidden; border-radius: 11px 11px 0 0; }
-/* thumbnail appearance: opacity only (compositor-friendly, no layout/thumbnail
-   cost). Starts transparent ONLY when JS marks it decoding (new arrivals), so
-   incremental/local paint is never gated; on decode-done it fades in. Lazy
-   offscreen thumbs keep opacity 1 — no flash, no delay. */
-.capture .thumb img {
-  width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block;
-  cursor: zoom-in;
-  transition: opacity .18s ease-out;
-}
-.capture .thumb img.thumb-enter { opacity: 0; }
-.capture .thumb img.thumb-in { opacity: 1; }
 
-/* tile entrance for NEW captures (SSE push / fresh upload): compositor-only
-   scale+fade on the tile — transform/opacity never trigger layout or paint.
-   Rendered-history tiles never get the class, so bulk loads are unaffected. */
-.capture.enter {
-  animation: capture-enter .22s cubic-bezier(.2, .8, .3, 1) both;
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-@keyframes capture-enter {
-  from { opacity: 0; transform: translateY(6px) scale(.97); }
-  to   { opacity: 1; transform: none; }
-}
-/* the meta row: TIME on the left (a database id is not information the user can
-   use — `#14` is gone), the byte size on the right, revealed on hover/focus so
-   the row is quiet at rest. The relative label ("2d ago") is not lost: it is in
-   the tile's accessible name and in the hover title, which is where a moving
-   label belongs — a tile whose text changes under the pointer is noise. */
-/* the 32px left inset is the .pick box's lane, so the time starts after it */
-.capture .meta { padding: 6px 10px 6px 32px; font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
-.capture .meta .t { flex: none; font-variant-numeric: tabular-nums; }
-.capture .meta .sz { flex: none; opacity: 0; transition: opacity .15s; }
-.capture:hover .meta .sz,
-.capture:focus-within .meta .sz { opacity: 1; }
 
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
 
-/* capture actions: hover-shown, but stay usable via keyboard focus */
-.capture .actions {
-  position: absolute; top: 6px; right: 6px; z-index: 2;
-  opacity: 0; transition: opacity .15s;
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
 }
-.capture:hover .actions,
-.capture:focus-within .actions { opacity: 1; }
-/* ONE translucent panel: two glyphs (Copy, Send to phone) plus a ⋯ that holds
-   Download and Delete. It replaced four loose squares, which measured 27×21 and
-   needed ~120px — more than a 110px S-density tile — so they wrapped 2×2 and
-   covered the tile they belonged to. The panel measures 92×34 at EVERY density
-   (three 28px targets, 2px of padding, 1px gaps, 1px border), so it never wraps
-   and never has to shrink a target below the 28px floor (WCAG 2.5.8 / §2). */
-.capture .act-panel {
-  display: flex; align-items: center; gap: 1px; padding: 2px;
-  background: rgba(0,0,0,.78); border: 1px solid var(--ctl); border-radius: 9px;
-}
-.capture .act {
-  border: none; cursor: pointer; border-radius: 7px; padding: 0;
-  background: transparent; color: #fff; font-size: 13px; text-decoration: none;
-  display: grid; place-items: center;
-  min-width: 28px; min-height: 28px;
-}
-.capture .act .ic { width: 15px; height: 15px; }
-.capture .act:hover { background: rgba(255,255,255,.14); }
-.capture .act:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
-/* the ⋯ panel is FIXED for the same reason the file row's is: .capture-grid is a
-   scroll container, so an absolutely-positioned panel inside a tile is clipped
-   by it — the bottom row, where a menu is most likely to be opened, exactly.
-   It is moved into the BODY while open, because this tile LIFTS on hover and a
-   transformed ancestor is the containing block for a fixed descendant — see
-   toggleRowMenu (in the tile it landed 400px off, measured). */
-.cap-menu .menu { position: fixed; }
-.cap-menu .menu-item .ic { width: 14px; height: 14px; }
 
-/* lightbox */
-#lightbox {
-  position: fixed; inset: 0; z-index: 100;
-  background: rgba(0,0,0,.92);
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
 }
-#lightbox.hidden { display: none; }
-/* stage centers the image via flex; the img transform is owned by JS only */
-#lb-stage {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden; /* pan-clamped content can't spill */
-  cursor: grab;
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
-#lb-stage.zoomed { cursor: grabbing; }
-/* The FULL original is contain-fit to the stage: small images are enlarged to
-   fill the available space instead of floating at a few hundred pixels, big
-   ones shrink to fit — the whole picture is always visible, never cropped or
-   displayed "reduced". Wheel zoom then reveals actual pixels. */
-#lb-img {
-  width: 100%; height: 100%; object-fit: contain;
-  will-change: transform; user-select: none; -webkit-user-drag: none;
+
+.hidden {
+  display: none !important;
 }
-#lb-img.loading { opacity: 0; }
-#lb-img:not(.loading) { transition: opacity .15s; }
-/* instant placeholder: small thumbnail shown behind the loading full-res image */
-#lb-thumb {
-  position: absolute; inset: 0; margin: auto; /* centers in the flex stage */
-  width: 100%; height: 100%; object-fit: contain;
-  user-select: none; -webkit-user-drag: none;
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
-#lb-thumb.hidden { display: none; }
-#lb-bar {
-  position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 2px; white-space: nowrap;
-  background: rgba(23, 24, 26, .9); backdrop-filter: blur(10px);
-  border: 1px solid var(--ctl); border-radius: 14px;
-  padding: 6px; font-size: 13px; color: var(--muted);
-  box-shadow: 0 14px 44px rgba(0,0,0,.55);
-}
-/* Glyph-only action row in a floating pill. Four words became four 34x34
-   squares, which is what makes room for the position to sit in the MIDDLE
-   instead of trailing a sentence — and it stops Delete from being a text label
-   competing with the three actions the user actually came for. */
-#lb-bar .lb-act {
-  border: none; background: transparent; color: var(--text); text-decoration: none;
-  border-radius: 9px; width: 34px; height: 34px; padding: 0;
-  display: grid; place-items: center; flex: none;
-}
-#lb-bar .lb-act:hover { background: rgba(255,255,255,.08); }
-#lb-bar .lb-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#lb-bar .lb-act .ic { width: 16px; height: 16px; }
-#lb-bar .lb-act.danger { color: #fca5a5; }
-#lb-bar .lb-act.danger:hover { background: rgba(239, 68, 68, .16); }
-/* the position: centred, tabular so "3 / 14" does not jitter to "10 / 14", and
-   pushed away from the actions by its own padding rather than by margin on the
-   neighbours it sits between */
-#lb-pos {
-  flex: none; padding: 0 14px; font-size: 13px; color: var(--text);
+
+.mono {
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
-/* context chip under the pill — one of them at a time, and it fades */
-#lb-meta {
-  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; pointer-events: none;
-  max-width: min(92vw, 720px);
-}
-#lb-caption, #lb-coach {
-  background: rgba(0,0,0,.62); border-radius: 7px; padding: 3px 9px;
-  font-size: 11.5px; color: var(--muted); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; max-width: 46vw;
-  transition: opacity .3s;
-}
-/* 2s after the last move the caption fades: it is context, not chrome, and it is
-   still read out (the element keeps its text; only its opacity moves) */
-#lb-meta.idle #lb-caption { opacity: 0; }
-#lb-coach { background: rgba(34,197,94,.14); border: 1px solid rgba(34,197,94,.4); color: #86efac; }
-#lb-coach.hidden { display: none; }
-#lb-coach.gone { opacity: 0; }
-/* ...and the coach mark is ONE TIME: it retires on the first zoom, and a user who
-   never zooms has still learned it by the 6s mark, so it goes then too (see
-   showCoach / markLbZoomed in app.js). */
-/* min-height on the base control classes is how "every desktop control is at
-   least 28px tall" (WCAG 2.5.8, DESIGN.md §2) is expressed ONCE instead of
-   per-consumer. It was needed: .btn had no padding of its own, so
-   #update-refresh / #empty-retry / the folder dialog's three buttons all
-   rendered ~20px tall, and #bulk-bar's override landed on 27px. */
-.btn {
-  background: var(--card2); border: 1px solid var(--ctl); color: var(--text);
-  border-radius: 8px; cursor: pointer; font-size: 14px; min-height: 28px;
-}
-.btn:hover { border-color: var(--ctl-hover); }
-/* every .btn keeps a visible keyboard ring — the lightbox bar, bulk bar and
-   confirm dialog previously fell back to the browser default */
-.btn:focus-visible,
-#lb-close:focus-visible, #lb-prev:focus-visible, #lb-next:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
-}
-#lb-close, #lb-prev, #lb-next {
-  position: absolute; border: 1px solid var(--ctl); background: var(--card);
-  color: var(--text); border-radius: 10px; cursor: pointer; font-size: 20px;
-  width: 42px; height: 42px; display: grid; place-items: center; z-index: 2;
-}
-#lb-close { top: 18px; right: 18px; }
-#lb-prev { left: 18px; top: 50%; transform: translateY(-50%); }
-#lb-next { right: 18px; top: 50%; transform: translateY(-50%); }
-#lb-close:hover, #lb-prev:hover, #lb-next:hover { border-color: var(--ctl-hover); }
-#lb-close .ic, #lb-prev .ic, #lb-next .ic { width: 18px; height: 18px; }
 
-/* narrow-window layout */
-@media (max-width: 760px) {
-  /* the caption and the coach mark already ellipsize and already retire on their
-     own; the POSITION is the one thing that has to survive at any width */
-  #lb-caption, #lb-coach { max-width: 38vw; }
-  /* Every action stays visible without scrolling the bar: the labels drop and
-     the icons carry the meaning (each control keeps its aria-label). Delete at
-     the far right used to be off-screen until you scrolled a control bar. */
-  #lb-bar .btn { padding: 9px 11px; font-size: 0; }
-  #lb-bar .btn .ic { width: 16px; height: 16px; vertical-align: 0; }
-  #lb-bar { max-width: 94vw; overflow-x: auto; } /* safety net only */
+.muted {
+  color: var(--muted);
 }
 
+kbd {
+  display: inline-block;
+  padding: 2px 7px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
 
-/* the tile's own focusable surface: thumb + meta wrapped by ONE button-like
-   element (role=button), so the four overlay actions are SIBLINGS of it rather
-   than interactive content nested inside role="button" */
-.capture-open { display: block; border-radius: 12px; cursor: pointer; }
+/* Icons via CSS masks */
+.ic {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  background-color: currentColor;
+  vertical-align: middle;
+  flex-shrink: 0;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.ic-pipe { -webkit-mask-image: url("/icons/pipe.svg"); mask-image: url("/icons/pipe.svg"); }
+.ic-send { -webkit-mask-image: url("/icons/send-horizontal.svg"); mask-image: url("/icons/send-horizontal.svg"); }
+.ic-mail { -webkit-mask-image: url("/icons/mail.svg"); mask-image: url("/icons/mail.svg"); }
+.ic-activity { -webkit-mask-image: url("/icons/activity.svg"); mask-image: url("/icons/activity.svg"); }
+.ic-gear { -webkit-mask-image: url("/icons/settings.svg"); mask-image: url("/icons/settings.svg"); }
+.ic-upload { -webkit-mask-image: url("/icons/upload.svg"); mask-image: url("/icons/upload.svg"); }
+.ic-file { -webkit-mask-image: url("/icons/file.svg"); mask-image: url("/icons/file.svg"); }
+.ic-copy { -webkit-mask-image: url("/icons/clipboard-copy.svg"); mask-image: url("/icons/clipboard-copy.svg"); }
+.ic-download { -webkit-mask-image: url("/icons/download.svg"); mask-image: url("/icons/download.svg"); }
+.ic-trash { -webkit-mask-image: url("/icons/trash-2.svg"); mask-image: url("/icons/trash-2.svg"); }
+.ic-phone { -webkit-mask-image: url("/icons/smartphone.svg"); mask-image: url("/icons/smartphone.svg"); }
+.ic-camera { -webkit-mask-image: url("/icons/camera.svg"); mask-image: url("/icons/camera.svg"); }
+.ic-grid { -webkit-mask-image: url("/icons/grid-3x3.svg"); mask-image: url("/icons/grid-3x3.svg"); }
+.ic-x { -webkit-mask-image: url("/icons/x.svg"); mask-image: url("/icons/x.svg"); }
+.ic-left { -webkit-mask-image: url("/icons/chevron-left.svg"); mask-image: url("/icons/chevron-left.svg"); }
+.ic-right { -webkit-mask-image: url("/icons/chevron-right.svg"); mask-image: url("/icons/chevron-right.svg"); }
+.ic-chevron-down {
+  -webkit-mask-image: url("/icons/chevron-up.svg");
+  mask-image: url("/icons/chevron-up.svg");
+  transform: rotate(180deg);
+}
 
-/* polish */
-.hint {
-  flex: none; text-align: left; margin-top: 14px; padding: 10px 12px; font-size: 12.5px; line-height: 1.7;
-  background: var(--card2); border: 1px solid var(--border); border-radius: 10px; color: var(--muted);
+/* Liquid Glass Navigation Bar */
+.topbar {
+  height: 60px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.11) 0%,
+      rgba(255, 255, 255, 0.04) 100%
+    ),
+    rgba(12, 14, 22, 0.65);
+  -webkit-backdrop-filter: saturate(210%) blur(40px);
+  backdrop-filter: saturate(210%) blur(40px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 10px 30px rgba(0, 0, 0, 0.32);
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
-.capture { transition: transform .12s, border-color .12s; }
-.capture:hover { transform: translateY(-2px); border-color: var(--ctl-hover); }
-/* NEW badge: top-right — the origin pill sits bottom-left on the thumbnail,
-   sel-check takes the top-left in select mode. ONE definition (a second
-   override further down used to disagree about the corner). */
-.badge-new {
-  position: absolute; top: 6px; right: 6px; background: var(--accent); color: #000;
-  font-size: 10px; font-weight: 800; border-radius: 6px; padding: 2px 6px;
-  animation: pop .3s ease;
-}
-@keyframes pop { from { transform: scale(.5); opacity: 0; } }
-.empty.hidden { display: none !important; }
 
-/* toasts */
-#toasts { position: fixed; bottom: calc(22px + var(--toast-lift, 0px)); left: 50%; transform: translateX(-50%); z-index: 380; display: flex; flex-direction: column; gap: 8px; align-items: center; }
-/* The toast carries the result of the LAST action — including actions taken
-   INSIDE the settings modal (auto-cleanup, cap, retention, quality, inbox),
-   which fire their toast while that dialog is up. At 200 the whole stack sat
-   under the modal veil (350) and the confirmation was a dimmed pill behind a
-   60% black + blur layer. 380 puts it above every dialog except the confirm
-   (400), so an interactive Undo can never cover a destructive Delete. */
-/* announced, never visible: ONE persistent live region for every toast message.
-   A region created with its content already inside it is often not announced at
-   all, and the toast itself must not BE the region — on the PC it contains the
-   interactive Undo button (see DESIGN.md §7 a11y contract). */
-.sr-only {
-  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
-  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+.topbar-start {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
 }
-/* the lightbox action bar is bottom-center at the same offset — a PC toast
-   (unlike the phone's inert flash) is interactive for Undo, so it must be
-   lifted clear of Rotate/Delete instead of covering them (PITFALLS #34) */
-body:has(#lightbox:not(.hidden)) { --toast-lift: 64px; } /* 22 + 64 = the old 86px */
-body:has(#bulk-bar:not(.hidden)) { --toast-lift: 68px; }  /* 45px bar, 39px off the floor */
-.toast {
-  position: relative; /* anchors the undo countdown bar */
-  background: var(--inv); color: var(--inv-fg); font-size: 13px; font-weight: 500;
-  border-radius: 999px; padding: 9px 18px; box-shadow: 0 6px 24px rgba(0,0,0,.4);
-  opacity: 0; transform: translateY(8px); transition: all .25s ease;
-}
-.toast.show { opacity: 1; transform: translateY(0); }
 
-/* drop overlay */
-#drop-overlay {
-  position: fixed; inset: 0; z-index: 300; display: none;
-  background: rgba(14,15,16,.62); backdrop-filter: blur(3px);
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--text-strong);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.12s var(--spring), opacity 0.12s ease;
 }
-#drop-overlay.show { display: grid; place-items: center; }
-/* The halo pulses on the COMPOSITOR: a scaled/faded ring pseudo-element instead
-   of an animated box-shadow. The old version repainted a 500px box-shadow every
-   frame — while a file drag is over the page, i.e. exactly when the browser is
-   busiest (H3 in the UI/UX audit). */
-.drop-box {
+
+.brand:hover {
+  opacity: 0.92;
+}
+
+.brand:active {
+  transform: scale(0.97);
+}
+
+.brand .logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #32d74b 0%, #0a84ff 55%, #5e5ce6 100%);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow:
+    0 4px 14px rgba(10, 132, 255, 0.42),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.45),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+}
+
+.brand-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.brand-name {
+  font-size: 16.5px;
+  font-weight: 680;
+  letter-spacing: -0.024em;
+  color: var(--text-strong);
+}
+
+.brand-sub {
+  font-size: 12px;
+  font-weight: 520;
+  color: var(--muted);
+}
+
+.topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.glass-pill {
+  border-radius: 999px !important;
+  padding: 0 15px !important;
+  background: var(--glass-pill) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26) !important;
+  -webkit-backdrop-filter: saturate(190%) blur(24px);
+  backdrop-filter: saturate(190%) blur(24px);
+}
+
+.glass-pill:hover {
+  background: var(--glass-pill-hover) !important;
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  transform: translateY(-1px);
+}
+
+.ver-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(10, 132, 255, 0.25);
+  border: 1px solid rgba(100, 210, 255, 0.38);
+  color: #bce6ff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+#rail-toggle {
+  display: none;
+}
+
+/* MESSAGES & CLIPBOARD DOCK */
+.composer-card {
   position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
-  border: 2px dashed var(--accent); color: var(--accent);
-  font-size: 20px; font-weight: 600; border-radius: 18px; padding: 44px 64px;
-  box-shadow: 0 18px 60px rgba(0,0,0,.55);
+  overflow: hidden;
+  background:
+    radial-gradient(circle 420px at 90% 0%, rgba(10, 132, 255, 0.16), transparent 70%),
+    radial-gradient(circle 340px at 8% 100%, rgba(48, 209, 88, 0.12), transparent 70%),
+    var(--glass-bg);
 }
-.drop-box::after {
-  content: ''; position: absolute; inset: -6px; border-radius: 24px;
-  border: 2px solid rgba(34,197,94,.45); pointer-events: none;
-  animation: dropring 1.6s ease-in-out infinite;
-}
-.drop-box .ic { width: 34px; height: 34px; animation: dropfloat 1.8s ease-in-out infinite; }
-@keyframes dropfloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-@keyframes dropring { 0%,100% { transform: scale(.985); opacity: .65; } 50% { transform: scale(1.05); opacity: .12; } }
 
-/* update banner (overlay — doesn't consume layout space). Anchored INSIDE the
-   header band: the old `top: 57px` landed on the compose bar and, being
-   interactive, swallowed clicks meant for the text input — and the band now
-   holds the compose field itself, so the banner sits BELOW the whole band rather
-   than on top of a control. The offset is derived from --topbar-h, not from the
-   49px the old header happened to measure. */
+.composer-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.messages-icon {
+  background: linear-gradient(145deg, #30d158, #0a84ff);
+}
+
+.compose-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.liquid-input-shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px 5px 16px;
+  background: rgba(3, 5, 12, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.22);
+  transition: border-color 0.14s var(--spring), box-shadow 0.14s var(--spring), background-color 0.14s ease;
+}
+
+.liquid-input-shell:focus-within {
+  background: rgba(3, 5, 12, 0.68);
+  border-color: rgba(10, 132, 255, 0.78);
+  box-shadow:
+    0 0 0 3.5px rgba(10, 132, 255, 0.28),
+    inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+#text-input {
+  flex: 1 1 auto;
+  height: var(--tb-ctl);
+  max-height: var(--tb-ctl);
+  padding: 9px 4px;
+  background: transparent;
+  color: var(--text-strong);
+  border: none;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  resize: none;
+  overflow: hidden;
+}
+
+#text-input::placeholder {
+  color: rgba(235, 235, 245, 0.46);
+}
+
+#text-input:focus {
+  outline: none;
+}
+
+.send-pill {
+  border-radius: 999px !important;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  background: linear-gradient(180deg, #2997ff 0%, #007aff 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.32) !important;
+  color: #ffffff !important;
+  flex-shrink: 0;
+  box-shadow:
+    0 4px 12px rgba(0, 122, 255, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
+  transition: transform 0.12s var(--spring), filter 0.12s ease !important;
+}
+
+.send-pill:hover {
+  filter: brightness(1.1);
+  transform: scale(1.05);
+}
+
+.send-pill:active {
+  transform: scale(0.92);
+}
+
+.text-recent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+  min-width: 0;
+}
+
+.text-rows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.text-pill {
+  padding: 6px 13px;
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.22) 0%, rgba(10, 132, 255, 0.12) 100%);
+  border: 1px solid rgba(100, 210, 255, 0.36);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 540;
+  color: #e8f4ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 340px;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: transform 0.12s var(--spring), background 0.12s ease, border-color 0.12s ease;
+}
+
+.text-pill:hover {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.34) 0%, rgba(10, 132, 255, 0.2) 100%);
+  border-color: var(--cyan);
+  transform: translateY(-1px);
+}
+
+.text-pill:active {
+  transform: scale(0.95);
+}
+
+/* Liquid Glass Buttons & Inputs */
+.toolbtn,
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: var(--tb-ctl);
+  padding: 0 14px;
+  background: var(--glass-pill);
+  color: var(--text-strong);
+  border: 1px solid var(--border-highlight);
+  border-radius: 11px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 580;
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: transform 0.12s var(--spring), background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.toolbtn:hover,
+.btn:hover {
+  background: var(--glass-pill-hover);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateY(-1px);
+}
+
+.toolbtn:active,
+.btn:active {
+  transform: scale(0.95);
+}
+
+.icon-btn {
+  width: var(--tb-ctl);
+  padding: 0;
+}
+
+.btn.primary {
+  background: linear-gradient(180deg, #2997ff 0%, #007aff 100%);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 4px 14px rgba(0, 122, 255, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.btn.primary:hover {
+  background: linear-gradient(180deg, #40a2ff 0%, #1486ff 100%);
+}
+
+.btn.primary-tinted {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.26) 0%, rgba(10, 132, 255, 0.15) 100%);
+  color: #82c8ff;
+  border-color: rgba(100, 210, 255, 0.4);
+}
+
+.btn.primary-tinted:hover {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.38) 0%, rgba(10, 132, 255, 0.24) 100%);
+  color: #ffffff;
+}
+
+.btn.danger-outline {
+  color: #ff7972;
+  background: rgba(255, 69, 58, 0.12);
+  border-color: rgba(255, 69, 58, 0.32);
+}
+
+.btn.danger-outline:hover {
+  background: rgba(255, 69, 58, 0.24);
+  border-color: rgba(255, 69, 58, 0.56);
+  color: #ffffff;
+}
+
+.linkbtn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  color: #5ac8fa;
+  font-size: 12px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: opacity 0.12s ease;
+}
+
+.linkbtn:hover {
+  opacity: 0.78;
+}
+
+.pp-sel,
+.pp-input {
+  height: var(--tb-ctl);
+  padding: 0 13px;
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.03) 100%
+    ),
+    rgba(6, 8, 16, 0.56);
+  color: var(--text-strong);
+  border: 1px solid var(--border-highlight);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 2px 8px rgba(0, 0, 0, 0.26);
+  transition: border-color 0.14s var(--spring), box-shadow 0.14s var(--spring), background-color 0.14s ease;
+}
+
+.pp-sel:focus,
+.pp-input:focus {
+  outline: none;
+  border-color: rgba(10, 132, 255, 0.8);
+  box-shadow:
+    0 0 0 3px rgba(10, 132, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+/* Remove native browser number spinner arrows and search cancel icons */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  width: 96px;
+  text-align: center;
+}
+
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Custom Liquid Glass Popover Menu (replaces Windows 98 / native OS <select>) */
+.glass-select {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.glass-select-trigger {
+  height: var(--tb-ctl);
+  padding: 0 13px 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 146px;
+  background: var(--glass-pill);
+  -webkit-backdrop-filter: saturate(200%) blur(28px);
+  backdrop-filter: saturate(200%) blur(28px);
+  color: var(--text-strong);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 590;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+  transition: transform 0.12s var(--spring), background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.glass-select-trigger:hover {
+  background: var(--glass-pill-hover);
+  border-color: rgba(255, 255, 255, 0.34);
+  transform: translateY(-1px);
+}
+
+.glass-select-trigger:active {
+  transform: scale(0.96);
+}
+
+.glass-select.open .glass-select-trigger {
+  border-color: rgba(10, 132, 255, 0.82);
+  box-shadow:
+    0 0 0 3px rgba(10, 132, 255, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.glass-select-caret {
+  width: 13px;
+  height: 13px;
+  opacity: 0.72;
+  transition: transform 0.15s var(--spring), opacity 0.12s ease;
+}
+
+.glass-select.open .glass-select-caret {
+  transform: rotate(0deg);
+  opacity: 1;
+}
+
+.glass-select-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 280px;
+  padding: 6px;
+  background: linear-gradient(
+      165deg,
+      rgba(40, 46, 66, 0.88) 0%,
+      rgba(20, 23, 36, 0.92) 100%
+    );
+  -webkit-backdrop-filter: saturate(240%) blur(48px);
+  backdrop-filter: saturate(240%) blur(48px);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 16px;
+  box-shadow:
+    0 22px 54px rgba(0, 0, 0, 0.68),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.32),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  z-index: 85;
+  transform-origin: top right;
+  animation: glassPopoverIn 0.14s var(--spring);
+}
+
+.glass-select-option {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.1s ease, color 0.1s ease, transform 0.1s var(--spring);
+}
+
+.glass-select-option:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-strong);
+}
+
+.glass-select-option.active {
+  background: linear-gradient(180deg, rgba(10, 132, 255, 0.34) 0%, rgba(10, 132, 255, 0.2) 100%);
+  color: #ffffff;
+  font-weight: 630;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.glass-select-check {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64d2ff;
+  opacity: 0;
+  transform: scale(0.75);
+  transition: opacity 0.12s ease, transform 0.12s var(--spring);
+}
+
+.glass-select-option.active .glass-select-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+@keyframes glassPopoverIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Segmented Liquid Glass Control */
+.origin-seg {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  background: var(--glass-well);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.42);
+}
+
+.origin-btn {
+  height: 31px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 580;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.14s var(--spring), transform 0.12s var(--spring), box-shadow 0.14s var(--spring);
+}
+
+.origin-btn:hover {
+  color: var(--text-strong);
+}
+
+.origin-btn:active {
+  transform: scale(0.95);
+}
+
+.origin-btn.active {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.12) 100%);
+  color: var(--text-strong);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+/* Workspace Layout */
+.app {
+  max-width: 1460px;
+  margin: 0 auto;
+  padding: 22px 24px 48px;
+}
+
 #update-banner {
-  position: fixed; top: calc(6px + var(--topbar-h)); left: 50%; transform: translateX(-50%);
-  z-index: 150; background: #b45309; color: #fff; padding: 8px 16px;
-  border-radius: 10px; max-width: min(1200px, 92vw); text-align: center;
-  font-weight: 600; font-size: 13.5px; line-height: 1.35;
-  box-shadow: 0 6px 24px rgba(0,0,0,.4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px;
+  margin-bottom: 18px;
+  background: rgba(255, 159, 10, 0.16);
+  -webkit-backdrop-filter: saturate(200%) blur(28px);
+  backdrop-filter: saturate(200%) blur(28px);
+  border: 1px solid rgba(255, 159, 10, 0.45);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  animation: macBannerSlide 0.18s var(--spring);
 }
 
-/* ---------- toolbar: five controls on ONE 32px baseline ---------- */
-/* The row's job is: which view, which subset, in what order, at what size.
-   Everything occasional moved behind the ⋯. Before: 10 controls on three
-   baselines (31 / 23 / 22px) and two inverted-white surfaces, which is why it
-   also wrapped to a 72px second row at 860px. `--row` is the height every
-   control in the row reads, so a new one cannot arrive on its own baseline. */
-.toolbar { --row: 32px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom: 12px; flex: none; }
-.toolbar h3 { margin:0; color: var(--text-bright); font-weight: 700; font-size: 16px; }
-.tools { display:flex; gap:8px; align-items:center; flex: none; }
-.tools select { width:auto; margin:0; padding:6px 10px; font-size:13px; }
-
-/* ---------- origin filter (the row's middle third) ---------- */
-/* The chips NARROW the list, which is why they sit between "which view" and its
-   tools. They cover BOTH lists: a capture filters by `origin`, a transfer row by
-   `dir`, and the vocabulary is the same — "From phone" means the thing came
-   from the phone either way. Until P2 the origin key was a static legend in the
-   side rail: a colour explained by a control you could not click, in the one
-   column of the window with space to spare. */
-/* flex-basis 0, not auto. With `auto` the group's HYPOTHETICAL main size (its
-   content — 274px of chips, plus the 200px field search used to add) is what the
-   wrap algorithm measures — so the row wrapped at 1280 with 300px of slack
-   sitting in it. A zero basis makes the group only ever as wide as the space that
-   is actually left. Same trap DESIGN.md §7 documents for the grid's
-   `minmax(0,1fr)`. */
-.filters { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.chips { flex: none; display: flex; align-items: center; gap: 6px; }
-.chip {
-  height: var(--row, 32px); min-height: 28px; padding: 0 11px;
-  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
-  background: var(--card2); border: 1px solid var(--ctl); border-radius: 999px;
-  color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer;
-}
-.chip .ic { width: 12px; height: 12px; margin: 0; }
-.chip[data-origin="phone"] .ic { color: var(--accent); }
-.chip[data-origin="pc"] .ic { color: #60a5fa; }
-.chip:hover { border-color: var(--ctl-hover); color: var(--text); }
-.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* The chosen chip is an accent TINT, not the inverted fill: `#fff` belongs to
-   the active view segment alone (DESIGN.md §7), and a filter is auxiliary state.
-   The tint-outline pair is the same one the phone's status strip uses for "on". */
-.chip.on { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.45); color: #86efac; }
-/* Below 1000px the row must still hold a view switch, three chips and four tools
-   on one 32px baseline; the chips give up padding first (their labels stay — an
-   icon-only filter chip is a guess) and then wrap. The tools never collapse:
-   they are the row's job. With the search field gone (v1.20.0) the row has ~200px
-   MORE slack than it did, so nothing folds into the ⋯ any more. */
-@media (max-width: 1000px) {
-  .chip { padding: 0 9px; font-size: 12px; gap: 5px; }
-  .chip .ic { width: 11px; height: 11px; }
-}
-.filters .chips { flex-wrap: wrap; }
-.pp-sel, .tools select {
-  appearance:none; -webkit-appearance:none;
-  background:var(--card2); border:1px solid var(--ctl); color:var(--text);
-  border-radius:8px; padding:7px 30px 7px 12px; font-size:13px; cursor:pointer; min-height:28px;
-  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6l5-6z' fill='%239a9c9e'/></svg>");
-  background-repeat:no-repeat; background-position:right 12px center;
-}
-.pp-sel:hover, .tools select:hover { border-color:var(--ctl-hover); }
-.pp-sel:focus, .tools select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px rgba(34,197,94,.18); }
-.pp-sel option, .tools select option { background:var(--card); color:var(--text); }
-.toolbtn { background:var(--card2); border:1px solid var(--ctl); color:var(--text); border-radius:8px; padding:7px 12px; cursor:pointer; font-size:13px; display:inline-flex; align-items:center; gap:6px; min-height:28px; min-width:28px; }
-.toolbtn:hover { border-color:var(--ctl-hover); }
-.toolbtn.active { background:var(--inv); color:var(--inv-fg); border-color:var(--inv); }
-.toolbtn.danger { color:#fca5a5; }
-.toolbtn.danger:hover { border-color:var(--danger); }
-.toolbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* one row height for the whole toolbar, centred by the box rather than by
-   padding maths (the padding is only kept for the base .toolbtn elsewhere) */
-.toolbar .toolbtn { height: var(--row); min-height: var(--row); padding: 0 12px; }
-/* an icon-only control is a 32px square: the glyph stays small, the TARGET does
-   not (WCAG 2.5.8, DESIGN.md §2 — the 28px floor is what the test pins) */
-.toolbar .icon-btn { width: var(--row); min-width: 28px; padding: 0; justify-content: center; }
-.toolbar .icon-btn .ic { width: 15px; height: 15px; }
-
-/* ---------- toolbar menus (sort · size · ⋯) ---------- */
-/* ONE popup for all three triggers — the same shape the phone's More sheet uses:
-   one trigger, one panel, `.open` gated, so the entrance is a single
-   compositor-only transition and a closed menu costs nothing. */
-.mpop { position: relative; display: inline-flex; }
-.menu {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
-  min-width: 196px; display: flex; flex-direction: column; gap: 2px; padding: 6px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: 0 14px 44px rgba(0,0,0,.55);
-  /* visibility (not display) so the 140ms exit can play; a hidden menu is also
-     out of the tab order, so nothing focusable lingers behind it */
-  visibility: hidden; opacity: 0; transform: translateY(-4px);
-  transition: opacity .14s ease-out, transform .14s ease-out, visibility 0s .14s;
-}
-.menu.open { visibility: visible; opacity: 1; transform: none; transition: opacity .14s ease-out, transform .14s ease-out, visibility 0s; }
-.menu-right { left: auto; right: 0; } /* the ⋯ is the row's last control */
-.menu-item {
-  display: flex; align-items: center; gap: 9px; width: 100%;
-  height: var(--row, 32px); min-height: 28px; padding: 0 10px;
-  border: none; background: none; border-radius: 8px;
-  color: var(--text); font-size: 13px; text-align: left; cursor: pointer;
-}
-.menu-item:hover { background: rgba(255,255,255,.05); }
-.menu-item .ic { flex: none; width: 14px; height: 14px; color: var(--muted); }
-.menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* "chosen" is a fill plus a tick, never an inversion — inverted white is this
-   system's emphasis language and it belongs to the active view segment alone
-   (DESIGN.md §7). A menu's open state is a fill change. */
-.menu-item[aria-pressed="true"] { background: var(--card2); color: var(--text-bright); }
-.menu-item[aria-pressed="true"]::after { content: '✓'; margin-left: auto; color: var(--accent); font-weight: 700; }
-.menu-item.danger { color: #fca5a5; }
-.menu-item.danger:hover { background: rgba(239,68,68,.12); }
-.menu-sep { height: 1px; margin: 4px 2px; background: var(--border); }
-/* a switch row inside a menu: the LABEL is still the target (28px+), so the
-   38x22 track stays a switch instead of becoming a chunky one */
-.menu .show-all-toggle { width: 100%; padding: 0 10px; border-radius: 8px; }
-.menu .show-all-toggle:hover { background: rgba(255,255,255,.05); }
-
-/* bulk bar — docked to the BOTTOM of the card via flex order. It used to sit
-   under the toolbar and keep its 45px row reserved (visibility:hidden) so that
-   entering Select mode wouldn't push the grid down — but that left a permanent
-   blank band between the toolbar and the first row of captures. At the bottom it
-   costs no layout space while hidden, and revealing it shrinks only the grid's
-   viewport (top-anchored tiles never move). */
-#bulk-bar { order:99; display:flex; align-items:center; gap:10px; min-height:45px; padding:8px 12px; margin:10px 0 0; background:var(--card2); border:1px solid var(--border); border-radius:10px; }
-#bulk-bar.hidden { display:none !important; }
-#bulk-bar.collapsed { display:none !important; }
-#bulk-bar .btn { font-size:13px; padding:5px 12px; }
-#bulk-bar .btn:disabled { opacity:.5; cursor:default; }
-/* Copy is the bar's PRIMARY. Selecting twelve photos to paste them into a
-   document was twelve individual Copy clicks — in an app whose one-line
-   description is "for pasting into AI chats". The inverted fill is sanctioned
-   here by DESIGN.md §7: the bulk bar is a docked overlay, not a fourth emphasis
-   level inside the toolbar's scale, and its primary is one of the two places the
-   inverted language is deliberately spent. */
-#bulk-bar .btn.primary { background:var(--inv); color:var(--inv-fg); border-color:var(--inv); }
-/* Delete is pushed to the far end, past a gap: an action that cannot be undone
-   does not sit shoulder-to-shoulder with the one that can. */
-#bulk-bar .btn.danger { color:#fca5a5; margin-left:auto; }
-
-/* badges */
-.capture.sel { outline:2px solid var(--inv); }
-
-/* link button */
-/* The type stays 12px; the TARGET is 28px tall (WCAG 2.5.8). As a bare inline
-   button "Hide QR" measured 58x16 — a 16px-tall hit area on a control that
-   sits at the end of a row. */
-.linkbtn { background:none; border:none; color:var(--muted); font-size:12px; cursor:pointer; text-decoration:underline; margin-top:8px; min-height:28px; display:inline-flex; align-items:center; }
-.linkbtn:hover { color:var(--text); }
-.linkbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* load more */
-#load-more { display:block; margin:10px auto 0; flex: none; }
-#load-more:disabled { opacity:.5; cursor:default; }
-#bulk-bar { flex: none; }
-#empty { flex: none; padding: 46px 20px; text-align:center; margin: 6px; }
-/* the empty card drop affordance: the user has to SEE that dropping works
-   before they drag, so this is an interactive boundary, not a hairline */
-.main-card.droptarget { border-style: dashed; border-color: var(--ctl); }
-.main-card.droptarget:hover { border-color: var(--ctl-hover); }
-.empty-title { color: #cfd0d2; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-.empty-sub { color: var(--muted); font-size: 13.5px; margin-bottom: 4px; }
-.empty-hint { color: var(--faint); font-size: 12.5px; }
-/* connection pulse: single soft animation on load to acknowledge pairing readiness */
-@keyframes live-pulse {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.5); opacity: 0.4; }
-  100% { transform: scale(1); opacity: 1; }
-}
-.dot.ok { animation: live-pulse .6s ease-out 1; }
-
-/* ---------- light-sweep feedback: a quiet mirror-sheen on interactive controls ---------- */
-/* One shared pseudo-element per control; transform-only animation, runs only on
-   hover/press, so it costs nothing at rest. Reduced-motion users get none. */
-.toolbtn, .btn, .capture .act, .f-actions .act {
-  position: relative; overflow: hidden;
-}
-/* an icon menu's panel must not clip its own shadow (the sheen rule above sets
-   overflow:hidden on the trigger, never on the panel) */
-.menu { overflow: visible; }
-.toolbtn::after, .btn::after, .capture .act::after, .f-actions .act::after {
-  content: ''; position: absolute; top: -40%; bottom: -40%; left: 0; width: 34%;
-  background: linear-gradient(105deg, transparent, rgba(255,255,255,.10), transparent);
-  transform: translateX(-140%) skewX(-14deg);
-  opacity: 0; pointer-events: none;
-}
-.toolbtn:hover::after, .toolbtn:active::after,
-.btn:hover::after, .btn:active::after,
-.capture .act:hover::after, .capture .act:active::after,
-.f-actions .act:hover::after, .f-actions .act:active::after {
-  opacity: 1; animation: sheen .55s ease-out;
-}
-@keyframes sheen { to { transform: translateX(380%) skewX(-14deg); } }
-
-/* respect users who turn animations off */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-  /* entrance/fade classes become inert no-ops — nothing to clean up */
-  .capture.enter { animation: none; }
-  .capture .thumb img.thumb-enter { opacity: 1; }
+.update-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 580;
+  color: var(--text-strong);
 }
 
-/* ---------- UX pass overrides ---------- */
-/* side card: pad the bottom so the last control is fully reachable, and keep a
-   thin scrollbar at EVERY width. It only renders when the card actually
-   overflows; hiding it on desktop (the old min-width:801 rule) meant a short
-   window clipped the storage/legend rows with no hint that more was below. */
-.card.side { padding-bottom: 24px; }
-/* settings button + connection pill share the side card's top row — the
-   card content (QR, pairing, storage) stays; only toggles moved out */
+.update-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 10px var(--amber);
+}
+
+.view {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* Liquid Glass Card Material */
+.card {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: saturate(210%) blur(44px);
+  backdrop-filter: saturate(210%) blur(44px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  box-shadow:
+    0 22px 48px -14px rgba(0, 0, 0, 0.58),
+    var(--specular-inset);
+}
+
+/* Liquid Glass Sidebar (#rail) */
+.side {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: sticky;
+  top: 80px;
+}
+
 .side-head {
-  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.settings-btn { flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; }
-.settings-btn .ic { width: 14px; height: 14px; }
-/* settings modal — fast, cheap animation: opacity + scale on the box only
-   (no layout properties, no backdrop blur changes), ~120ms in / 90ms out.
-   Uses [data-open] so the closing transition can play before display:none. */
-#settings-backdrop, #texts-backdrop, #scan-backdrop {
-  position: fixed; inset: 0; z-index: 350;
-  background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
-  display: grid; place-items: center; padding: 20px;
-  opacity: 0; transition: opacity .12s ease;
-}
-#settings-backdrop[data-open], #texts-backdrop[data-open], #scan-backdrop[data-open] { opacity: 1; }
-.settings-box {
-  width: min(94vw, 380px); background: var(--card); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px;
-  box-shadow: 0 12px 60px rgba(0,0,0,.6);
-  /* the list outgrew a short window — scroll inside the box instead of
-     clipping the storage/backup rows off the bottom */
-  max-height: min(88dvh, 760px); overflow-y: auto; scrollbar-width: thin;
-  transform: scale(.96); transition: transform .12s ease;
-}
-#settings-backdrop[data-open] .settings-box, #texts-backdrop[data-open] .settings-box { transform: scale(1); }
-.settings-head { display: flex; align-items: center; justify-content: space-between; }
-.settings-title { font-size: 14px; font-weight: 650; color: var(--text-bright); }
-.settings-list { display: flex; flex-direction: column; gap: 12px; }
-
-/* ---------- settings: one row grid, three named groups ---------- */
-/* The list was FLAT and every row had its own idea of alignment: the switches
-   sat flush left and the selects flush right, so nothing lined up down the
-   panel, and "copy new captures" carried the same weight as "back up
-   everything". Named groups + ONE row anatomy. */
-.settings-group { display: flex; flex-direction: column; gap: 5px; }
-.settings-group-h {
-  margin: 0; font-size: 11px; font-weight: 650; text-transform: uppercase;
-  letter-spacing: .12em; color: var(--muted);
-}
-/* minmax(36px, auto), not 36px: a row that has to wrap a long label grows
-   instead of clipping, while a plain row keeps the review's 36px rhythm */
-.settings-rows {
-  display: grid; grid-auto-rows: minmax(36px, auto); align-items: center; gap: 2px;
-  background: var(--card2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 4px 10px;
-}
-.settings-rows > * { margin: 0; min-width: 0; }
-/* label left, CONTROL RIGHT: the switch is the last child in the markup, so one
-   justify-content lands every control on the same edge as the selects already
-   sat on (see .nested-setting .pp-sel below). */
-.settings-rows .auto-copy-toggle {
-  justify-content: space-between; gap: 12px;
-  margin-top: 0; font-size: 13px; padding: 0;
-}
-.settings-rows .nested-setting { min-height: 30px; padding-left: 0; }
-.settings-rows .storage-row { align-self: stretch; padding: 4px 0; }
-.settings-rows .storage-path { font-size: 12px; }
-.settings-rows .quality-setting { gap: 0; }
-/* transfer-quality setting: toggle + nested slider row (revealed when on) */
-.quality-setting { display: flex; flex-direction: column; gap: 2px; }
-#quality-row { display: flex; align-items: center; gap: 10px; padding: 2px 0 4px 24px; }
-/* 28px tall: the whole strip is draggable, not just the 16px thumb (WCAG 2.5.8) */
-#quality-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); height: 28px; }
-#quality-row .quality-val { flex: none; font-size: 11.5px; color: var(--muted); min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
-/* generic nested row under a toggle (storage cap) + inline select rows */
-.nested-setting { display: flex; align-items: center; gap: 8px; padding: 2px 0 4px 24px; font-size: 12px; }
-.nested-setting.hidden { display: none; }
-.nested-setting .pp-sel { margin-left: auto; font-size: 11.5px; padding: 4px 22px 4px 8px; }
-
-/* ---------- webcam scan (PC harness) ---------- */
-/* The scanner is a MODAL task and rides the settings shell (same backdrop fade,
-   same focus trap), but its box is LANDSCAPE and wider — the viewfinder is the
-   content, and a 380px column would make it a postage stamp. The stage keeps a
-   fixed 4:3 box (scan.js overwrites aspect-ratio to the camera's once the stream
-   starts) so the overlay has a stable coordinate space to draw corners in. */
-.scan-box {
-  width: min(94vw, 680px); background: var(--card); border: 1px solid var(--border);
-  border-radius: 14px; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px;
-  box-shadow: 0 12px 60px rgba(0,0,0,.6);
-  max-height: min(92dvh, 820px); overflow-y: auto; scrollbar-width: thin;
-  transform: scale(.96); transition: transform .12s ease;
-}
-#scan-backdrop[data-open] .scan-box { transform: scale(1); }
-.scan-stage {
-  position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000;
-  border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-}
-#scan-video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
-/* the corner overlay paints OVER the video and is the drag surface: touch-action
-   none stops a corner drag from scrolling the box on a touchscreen */
-.scan-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
-.scan-status {
-  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
-  background: rgba(0,0,0,.72); color: var(--text); border: 1px solid var(--border);
-  border-radius: 8px; padding: 6px 12px; font-size: 12.5px; max-width: 88%;
-  text-align: center; pointer-events: none;
-}
-.scan-device { position: absolute; top: 10px; left: 10px; max-width: 60%; font-size: 12px; }
-.scan-review { display: flex; justify-content: center; }
-/* capped so the deskewed result is a CHECK, not a second viewfinder: the corners
-   above are where the crop is fixed */
-.scan-preview { max-width: 100%; max-height: 150px; border: 1px solid var(--border); border-radius: 8px; background: #000; }
-.scan-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.scan-hint { font-size: 12.5px; min-width: 0; }
-.scan-buttons { display: flex; gap: 8px; flex: none; }
-.scan-buttons .btn { padding: 8px 16px; }
-/* one emphasis fill in the system (--inv): the shutter/save is it, and the same
-   --inv the active view segment and the bulk bar's Copy already use */
-.scan-buttons .btn.primary { background: var(--inv); color: var(--inv-fg); border-color: var(--inv); }
-.scan-buttons .btn.primary:hover { border-color: var(--inv); }
-
-/* connection pill: amber while the SSE reconnects (red = fully offline) */
-.dot.warn { background: #f59e0b; }
-/* RTL / mixed-direction text: follow the text's own base direction */
-#text-input, .text-item, .t-body { unicode-bidi: plaintext; }
-/* empty state: centered in the grid area instead of a padded block up top */
-#empty {
-  flex: 1 1 auto; display: grid; place-content: center; align-content: center;
-  justify-items: center; gap: 2px; min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 4px;
 }
 
-/* ---------- first run: the setup card ---------- */
-/* The empty state used to be three lines of 12.5–16px grey text centred in a
-   996×661 void, beside a full set of tools. This is the screen that decides the
-   impression, so it is ONE card with the three steps in order. It RESOLVES into
-   the library: the moment the first capture or transfer exists it is gone.
-   Steps 2–3 dim to 45% until the phone has actually connected — a progress
-   affordance, not a checklist (a step you cannot do yet should look like it). */
-.setup {
-  flex: 1 1 auto; min-height: 0; padding: 24px 20px;
-  display: grid; place-content: center;
-}
-.setup-steps {
-  list-style: none; margin: 0; padding: 0;
-  width: 100%; max-width: 460px;
-  display: grid; gap: 14px;
-}
-.setup-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; align-items: start; }
-.setup-step.dim { opacity: .45; }
-.setup-n {
-  width: 22px; height: 22px; border-radius: 50%;
-  display: grid; place-items: center;
-  font-family: ui-monospace, Consolas, monospace; font-size: 11px;
-  background: var(--card2); border: 1px solid var(--ctl); color: var(--muted);
-}
-/* the step being asked for is the only lit one; it turns accent-green once the
-   phone has connected, so the card reads as progress rather than decoration */
-.setup-step:not(.dim) .setup-n { background: rgba(34,197,94,.16); border-color: rgba(34,197,94,.5); color: #86efac; }
-.setup-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.setup-body b { color: var(--text); font-size: 13.5px; font-weight: 600; }
-.setup-sub { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
-.setup-step .btn { align-self: flex-start; margin-top: 8px; }
-
-/* ---------- first run: no data tools yet ---------- */
-/* On a fresh install the toolbar offered sort, density, search, the origin
-   chips, Select and Delete-all over an empty grid — every control present, none
-   of them able to do anything. `.main-card.no-data` (set by loadStats, and the
-   class the markup ships with) hides the MANAGE tools; the view switch and the
-   compose field stay, because navigation and capture are what a first-run
-   screen is FOR. ＋File stays too: it is how the first data arrives. */
-.main-card.no-data .filters,
-.main-card.no-data .mpop.cap-only,
-.main-card.no-data #select-btn,
-.main-card.no-data #del-all-btn,
-.main-card.no-data #del-all-files-btn { display: none; }
-
-/* ---------- view switch (Captures / Transfers) — a segmented control ----------
-   ONE --ctl outline on the TRACK and none on its items, which is what lets the
-   whole toolbar reach a single height (four bordered controls became one). Its
-   fill is --seg, so the track reads as a slot rather than as a fourth emphasis
-   level. The items are still a real ARIA tablist: arrows and Home/End move the
-   selection and the roving tabindex follows it (see paintTabFocus in app.js). */
-/* The track's padding is 1px, not 2: with a 32px track a 2px inset left the
-   segments at 26px — under the 28px desktop target floor (DESIGN.md §2) — while
-   1px keeps the whole control at 32px with 28px segments. Same arithmetic the
-   density track used before it. */
-.view-tabs {
-  flex: 0 1 auto; min-width: 0;
-  display: flex; gap: 2px; align-items: center;
-  height: var(--row, 32px); padding: 1px;
-  background: var(--seg); border: 1px solid var(--ctl); border-radius: 9px;
-}
-.view-tabs .tab-btn {
-  height: calc(var(--row, 32px) - 4px); min-height: 28px; padding: 0 11px;
-  border: none; background: none; border-radius: 6px;
-  color: var(--muted); font-weight: 600; white-space: nowrap;
-}
-.view-tabs .tab-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
-.view-tabs .tab-btn.active { background: var(--inv); color: var(--inv-fg); }
-/* THE one inverted surface in the toolbar. Its count cannot stay --faint
-   (2.6:1 on the fill) — #5b6472 measures 4.80:1 on --inv, still AA. */
-.tab-btn .faint { margin-left: 4px; }
-.tab-btn.active .faint { color: #5b6472; }
-
-/* ＋ File button + the ⋯ menu's switch row */
-.file-add { cursor: pointer; user-select: none; }
-.show-all-toggle {
-  display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
-  color: var(--muted); cursor: pointer; user-select: none; min-height: 28px;
-}
-.show-all-toggle:hover { color: var(--text); }
-/* .show-all-toggle input shares the .auto-copy-toggle switch rules above */
-
-/* ---------- transfers list ---------- */
-.transfer-list {
-  flex: 1 1 auto; min-height: 0; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 8px; padding: 2px;
-  scrollbar-width: thin;
-}
-.transfer-row {
-  position: relative; /* containing block for the .sel-check badge */
-  display: flex; align-items: center; gap: 12px;
-  background: var(--card2); border: 1px solid var(--ctl); border-radius: 10px;
-  padding: 8px 12px; min-height: 52px;
-}
-.transfer-row:hover { border-color: var(--ctl-hover); }
-.transfer-row.removing { opacity: 0; transform: translateX(12px); transition: all .2s ease; }
-/* the row's own surface (.f-info): outlined on focus, and it is what a click or
-   Enter/Space toggles in Select mode. It wraps only text, so it stays a valid
-   button — the Open/Save/Delete controls sit beside it, never inside it. */
-.f-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-/* selected transfer row: the SAME white ring the tile uses, plus the shared
-   .sel-check badge — which is absolutely positioned, so it lands over the
-   direction icon, and hiding that icon keeps one marker per row instead of two
-   squares stacked on top of each other. */
-.transfer-row.sel { outline: 2px solid var(--inv); }
-.transfer-row.sel .f-dir { visibility: hidden; }
-.transfer-row .sel-check { top: 50%; left: 17px; transform: translateY(-50%); }
-.f-dir {
-  flex: none; width: 30px; height: 30px; border-radius: 8px;
-  display: grid; place-items: center; font-size: 15px;
-  background: var(--card); border: 1px solid var(--border);
-}
-.f-dir.phone { color: var(--accent); background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.35); }
-.f-dir.pc { color: #60a5fa; background: rgba(96,165,250,.12); border-color: rgba(96,165,250,.35); }
-.f-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.f-name { font-size: 13.5px; color: var(--text-bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.f-sub { font-size: 11.5px; color: var(--faint); }
-/* Row actions: 28×28 glyph squares revealed on hover / focus-within. They used
-   to be three identical TEXT buttons in every row — 27 targets and 27 tab stops
-   for 9 files, none of which said which file it belonged to. At rest a row now
-   carries no controls at all, which is the shape every file list the user
-already knows has. Focus still reveals them (a control that can be tabbed to is
-   a control the user can see), and a selected row keeps them up. */
-/* the ⋯ panel is FIXED, not absolute. `.transfer-list` is a scroll container, so
-   an absolutely-positioned panel inside a row is CLIPPED by it — and the last
-   visible row, where a menu is most likely to be opened, is exactly the clipped
-   one. app.js places it from the trigger's rect and closes it on scroll. */
-.f-menu .menu { position: fixed; }
-.f-actions { display: flex; gap: 6px; flex: none; opacity: 0; transition: opacity .15s; }
-.transfer-row:hover .f-actions,
-.transfer-row:focus-within .f-actions,
-.transfer-row.sel .f-actions { opacity: 1; }
-.f-actions .act {
-  border: 1px solid var(--ctl); background: var(--card); color: var(--text);
-  border-radius: 8px; padding: 0; font-size: 12px; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 28px; min-height: 28px; text-decoration: none; /* was a 24px text pill */
-}
-.f-actions .act:hover { border-color: var(--ctl-hover); }
-.f-actions .act .ic { width: 14px; height: 14px; }
-.f-actions .menu-item .ic { width: 14px; height: 14px; }
-
-/* Day groups. Twenty flat rows have no shape: “27.0 B · 2h ago” repeated is a
-   wall, and the question the list exists to answer — did my file land today? —
-   needed counting. `position: sticky` works because .transfer-list is the
-   scrolling ancestor; the opaque background is what stops rows sliding through
-   the label. */
-.day-head {
-  position: sticky; top: 0; z-index: 1;
-  padding: 6px 12px 2px; margin: 0;
-  font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--muted); background: var(--card);
+.settings-btn {
+  height: 33px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
-/* in-flight upload rows (XHR progress) */
-#transfers-uploads { display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 10px; }
-#transfers-uploads:not(.hidden) { margin-bottom: 4px; }
-#transfers-uploads:empty { display: none; } /* no phantom gap under the toolbar before the first upload */
-.upload-row { display: flex; flex-direction: column; gap: 4px; background: var(--card2); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
-.upload-row .u-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-.upload-row .u-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.upload-row .u-pct { flex: none; color: var(--faint); }
-.u-bar { height: 4px; border-radius: 999px; background: var(--card); overflow: hidden; }
-/* progress runs on the compositor: scaleX, not width (JS writes the same
-   fraction — see uploadFileXHR) */
-.u-bar i { display: block; height: 100%; width: 100%; background: var(--accent); border-radius: 999px; transform: scaleX(0); transform-origin: left center; transition: transform .2s ease; }
-
-/* "Show all" merged mode: the capture grid is the primary surface and keeps
-   the flexible space so tiles stay their full size; the transfers list below
-   scrolls within at most 45% of the card. An empty transfers state collapses
-   to a small centered box instead of squatting on half the column and
-   squeezing the captures (the empty list itself contributes no height). */
-.main-card.all-view #captures { flex: 1 1 auto; min-height: 0; }
-.main-card.all-view .transfer-list { flex: none; max-height: 45%; min-height: 0; overflow-y: auto; }
-.main-card.all-view #transfers-uploads { flex: none; }
-/* empty / fallback states reuse .empty */
-#transfers-fallback, #transfers-empty { flex: 1 1 auto; display: grid; place-content: center; align-content: center; justify-items: center; gap: 2px; min-height: 0; }
-/* in merged view they must not compete with the capture grid for height */
-.main-card.all-view #transfers-fallback, .main-card.all-view #transfers-empty {
-  flex: none; max-height: 45%; min-height: 110px; overflow: hidden;
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  background: var(--glass-well);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--text-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* ---------- the rail: four cards, one scroll region ---------- */
-/* It used to be a centred flex column whose contents were a pill, a QR, a
-   three-line storage box and a legend — so everything sat on the card's axis and
-   the column was half empty. Each question now gets its own card, and the cards
-   stretch: the rail reads as a stack of answers rather than a pile of labels. */
-.card.side { display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
-.card.side .pill { margin-bottom: 0; }
-/* every h3 in the rail carries .eyebrow — a font-size here would out-specify
-   the micro-label ("PAIR PHONE" rendered at 15px beside an 11px "STORAGE").
-   Let .eyebrow own the type; this rule owns only the box. */
-.card.side h3 { margin: 0; }
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.dot.ok {
+  background: var(--accent);
+  box-shadow: 0 0 10px rgba(48, 209, 88, 0.8);
+}
+.dot.warn {
+  background: var(--amber);
+  box-shadow: 0 0 10px rgba(255, 159, 10, 0.75);
+}
+.dot.off {
+  background: var(--danger);
+}
+
 .rail-card {
-  display: flex; flex-direction: column; gap: 7px;
-  background: var(--card2); border: 1px solid var(--border);
-  border-radius: 12px; padding: 10px 12px;
+  padding: 13px 14px;
+  background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.025) 100%
+    ),
+    rgba(6, 8, 16, 0.36);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
-/* the status card is the load-bearing one: it is the answer the user is
-   actually looking for, so it keeps the brighter surface */
-#stats { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-#stats .warn { color: var(--amber-text, #fbbf24); display: flex; align-items: flex-start; gap: 6px; }
-#stats .warn .ic { flex: none; width: 13px; height: 13px; margin-top: 2px; }
-.rail-sub { font-size: 12.5px; line-height: 1.5; color: var(--muted); }
-#cap-text { font-variant-numeric: tabular-nums; }
-/* pairing header row: eyebrow title + manual show/hide toggle */
-.pair-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.pair-head .linkbtn { margin: 0; flex: none; }
-#pair-body { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 4px; }
-/* 176px: the size that scans from across a desk. It fits because the rail's
-   content box is 264 - 28 (padding) - 2 (border) - 24 (card padding) = 210px. */
-#qr { display: block; margin: 2px auto; width: min(176px, 30vh); height: min(176px, 30vh); aspect-ratio: 1; object-fit: contain; }
-#nic-sel { margin: 0 auto; width: 100%; max-width: 210px; font-size: 12.5px; padding: 5px 26px 5px 10px; }
-#lan-url { margin: 0; font-size: 11.5px; }
-#manage-storage, #qr-toggle { align-self: flex-start; }
 
-/* ---------- capacity meter ---------- */
-/* "31.5 MB" answers nothing without the cap beside it. A 4px bar plus one
-   sentence is the same information in a glance instead of three lines of
-   arithmetic. The fill is a transform-free width transition (one paint, no
-   layout) on the accent, red past 80% — the same threshold auto-cleanup uses. */
-.meter { height: 4px; border-radius: 999px; background: var(--seg); overflow: hidden; }
-.meter i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--accent); transition: width .25s cubic-bezier(.2,.8,.3,1); }
-.meter.over i { background: var(--danger); }
-
-/* ---------- recent arrivals: the "did it land?" answer ---------- */
-.rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.rail-list li { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; }
-.rail-list .ic { flex: none; width: 13px; height: 13px; color: var(--muted); }
-/* direction, not kind: inbound is the accent (the phone is the source of most
-   arrivals), outbound is the PC blue — the same pair DESIGN.md §1 fixes for
-   every other origin/direction signal in the app. */
-.rail-list .r-in .ic { color: var(--accent); }
-.rail-list .r-out .ic { color: #60a5fa; }
-/* status card lines: a real dot element beside the fact, so the dot stays
-   aligned when the sentence wraps and the colour is not a background trick */
-#stats .s-online, #stats .s-offline { display: flex; align-items: center; gap: 6px; }
-#stats .s-online { color: var(--text); }
-#stats .s-offline { color: var(--amber-text, #fbbf24); }
-#stats .s-online .dot, #stats .s-offline .dot { flex: none; }
-#stats .s-sub { color: var(--muted); }
-/* the name is server data (a file name can be 200 chars) — one line, ellipsized */
-.rail-list .r-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.rail-list .r-time { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
-.auto-copy-toggle { margin-top: 2px; font-size: 12px; }
-/* collapsed keyboard shortcuts (now lives inside the settings modal) */
-.kb-hint { margin-top: 2px; }
-.kb-hint summary { cursor: pointer; color: var(--muted); user-select: none; padding: 5px 0; } /* 28px target (WCAG 2.5.8) */
-.kb-hint summary:hover { color: var(--text); }
-.kb-hint[open] summary { margin-bottom: 6px; }
-
-/* ---------- long-name safety ---------- */
-/* Server strings are echoed verbatim in two places with no wrapping control of
-   their own: the toast and the confirm dialog. A file name (or an absolute
-   storage path) can be 200+ characters with no space to break at, and an
-   unbreakable token cannot wrap — the centered toast grew wider than the
-   viewport and dragged the whole bottom bar off screen, and the confirm text
-   spilled straight out of its 380px box. Both are capped and told where they
-   are allowed to break. */
-#toasts { max-width: min(92vw, 620px); }
-.toast { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
-.confirm-box { max-width: min(380px, 92vw); }
-.confirm-box p { overflow-wrap: anywhere; }
-
-/* ---------- motion pass ----------
-   Every entry below is opacity/transform only (compositor-friendly, no layout,
-   no paint of surrounding content), 130–180ms — the "fast and responsive" end
-   of DESIGN.md §6. The global `prefers-reduced-motion` block above disables all
-   of it.
-
-   These elements are revealed by dropping `.hidden` (display:none → visible),
-   which restarts a CSS animation — while the far more common no-op
-   `classList.toggle('hidden', false)` on an already-visible element (every
-   applyTab / SSE update) changes nothing and replays nothing. So an entrance
-   here costs one short animation per real reveal, not one per re-render. */
-@keyframes pp-fade { from { opacity: 0; } }
-@keyframes pp-rise { from { opacity: 0; transform: translateY(6px); } }
-@keyframes pp-drop { from { opacity: 0; transform: translateY(-6px); } }
-@keyframes pp-pop  { from { opacity: 0; transform: scale(.96); } }
-
-/* view switch: Captures ⇄ Transfers */
-#captures:not(.hidden) { animation: pp-fade .16s ease-out; }
-#transfers:not(.hidden) { animation: pp-rise .16s ease-out; }
-/* states, bars and the pairing body appearing/disappearing */
-.empty:not(.hidden) { animation: pp-fade .18s ease-out; }
-#bulk-bar:not(.hidden) { animation: pp-rise .16s ease-out; }
-#transfers-uploads:not(.hidden) { animation: pp-fade .16s ease-out; }
-#load-more:not(.hidden), #files-load-more:not(.hidden) { animation: pp-fade .18s ease-out; }
-/* in-flight upload rows are fresh nodes, so this plays once per upload (never
-   on a re-render: the rows are never rebuilt, they are removed) */
-.upload-row { animation: pp-rise .16s ease-out; }
-#pair-body:not(.hidden) { animation: pp-fade .18s ease-out; }
-#text-latest:not(.hidden) { animation: pp-rise .18s ease-out; }
-#outbox-badge { animation: pp-pop .18s cubic-bezier(.2, .8, .3, 1); }
-#update-banner:not(.hidden) { animation: pp-drop .18s ease-out; }
-/* the two dialogs with no exit transition (settings has its own data-open
-   transition): backdrop fades, box settles — nothing animates the layout */
-#dir-backdrop:not(.hidden), #confirm-backdrop:not(.hidden) { animation: pp-fade .13s ease-out; }
-#dir-backdrop:not(.hidden) .dir-box,
-#confirm-backdrop:not(.hidden) .confirm-box { animation: pp-pop .14s cubic-bezier(.2, .8, .3, 1); }
-/* lightbox: overlay + chrome settle in; the image itself is untouched (JS owns
-   its transform for pan/zoom) and #lb-bar keeps its translateX(-50%) centering
-   throughout — the keyframe only supplies the `from` value, so the animation
-   interpolates back to the rule's own transform */
-#lightbox:not(.hidden) { animation: pp-fade .13s ease-out; }
-#lightbox:not(.hidden) #lb-bar { animation: lb-bar-in .18s cubic-bezier(.2, .8, .3, 1); }
-#lightbox:not(.hidden) #lb-close,
-#lightbox:not(.hidden) #lb-prev,
-#lightbox:not(.hidden) #lb-next { animation: pp-fade .16s ease-out; }
-@keyframes lb-bar-in { from { opacity: 0; transform: translateX(-50%) translateY(10px); } }
-
-/* press/hover feedback on the flat controls: background/border/color are
-   paint-only and cheap at this size, the 3% press scale is compositor-only.
-   Until now these snapped between states with no transition at all. */
-.toolbtn, .btn, .mini-btn, .pp-sel, .linkbtn, .tab-btn,
-#lb-bar .btn, .f-actions .act, .capture .act, .menu-item {
-  transition: background-color .14s ease, border-color .14s ease, color .14s ease, transform .12s ease;
+.rail-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
-.toolbtn:active, .btn:active, .mini-btn:active, .tab-btn:active,
-#lb-bar .btn:active, .f-actions .act:active, .capture .act:active, .menu-item:active {
-  transform: scale(.97);
+
+.eyebrow {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 660;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  color: var(--muted);
 }
-/* prev/next are centered with translateY(-50%) — the press scale has to carry
-   it along, or the arrow jumps to the top of the stage on mousedown */
-#lb-close, #lb-prev, #lb-next { transition: transform .12s ease, background-color .14s ease, border-color .14s ease; }
-#lb-close:active { transform: scale(.94); }
-#lb-prev:active { transform: translateY(-50%) scale(.94); }
-#lb-next:active { transform: translateY(-50%) scale(.94); }
+
+.stats-readout {
+  font-size: 13px;
+  font-weight: 580;
+  color: var(--text-strong);
+}
+
+.pair-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#pair-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.qr-frame {
+  padding: 11px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.3);
+  transition: transform 0.14s var(--spring);
+}
+
+.qr-frame:hover {
+  transform: scale(1.025);
+}
+
+#qr {
+  width: 154px;
+  height: 154px;
+  display: block;
+  border-radius: 6px;
+}
+
+.meter {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+#meter-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #0a84ff, #64d2ff, #30d158);
+  transition: width 0.22s var(--spring);
+}
+
+.rail-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+}
+
+.recent-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-strong);
+  font-weight: 540;
+}
+
+/* Main Workspace Column */
+.main-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.workbench-card {
+  padding: 20px 24px;
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.section-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  flex-shrink: 0;
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.3),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.4);
+}
+
+.section-icon .ic {
+  width: 18px;
+  height: 18px;
+}
+
+.photos-icon {
+  background: linear-gradient(145deg, #0a84ff, #5e5ce6);
+}
+
+.files-icon {
+  background: linear-gradient(145deg, #64d2ff, #0a84ff);
+}
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.card-title-wrap h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 670;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.card-subtitle {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.count-badge {
+  padding: 2px 9px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.drop-zone-banner {
+  padding: 16px;
+  margin-bottom: 16px;
+  background: rgba(10, 132, 255, 0.16);
+  border: 1.5px dashed var(--cyan);
+  border-radius: 16px;
+  text-align: center;
+  color: #a6e3ff;
+  font-weight: 620;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* Liquid Glass Photos Grid */
+.capture-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.capture-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 12px;
+}
+
+.cap-tile {
+  background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      rgba(255, 255, 255, 0.03) 100%
+    ),
+    rgba(12, 14, 22, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: transform 0.14s var(--spring), border-color 0.14s ease, box-shadow 0.14s var(--spring);
+  animation: macTileIn 0.16s var(--spring) both;
+}
+
+.cap-tile:hover {
+  transform: translateY(-3px) scale(1.008);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.48),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.cap-thumb-wrap {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: #040509;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.cap-thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.18s var(--spring);
+}
+
+.cap-tile:hover .cap-thumb-wrap img {
+  transform: scale(1.035);
+}
+
+.cap-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 660;
+  letter-spacing: 0.02em;
+  background: rgba(12, 14, 22, 0.72);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  backdrop-filter: saturate(180%) blur(14px);
+  color: #4ae371;
+  border: 1px solid rgba(48, 209, 88, 0.48);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.cap-badge.pc {
+  color: #7cc4ff;
+  border-color: rgba(100, 210, 255, 0.48);
+}
+
+.cap-meta {
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.cap-actions {
+  padding: 6px 8px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cap-actions .toolbtn {
+  flex: 1 1 0;
+  height: 31px;
+  font-size: 11.5px;
+  padding: 0 6px;
+  border-radius: 9px;
+}
+
+/* Shared Files List (Liquid Glass Rows) */
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 15px;
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.03) 100%
+    ),
+    rgba(8, 10, 18, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s var(--spring);
+  animation: macTileIn 0.15s var(--spring) both;
+}
+
+.file-row:hover {
+  background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.13) 0%,
+      rgba(255, 255, 255, 0.06) 100%
+    ),
+    rgba(14, 18, 30, 0.52);
+  border-color: rgba(255, 255, 255, 0.24);
+  transform: translateY(-1px);
+}
+
+.file-row-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.file-name {
+  font-weight: 620;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.file-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Empty States */
+.empty-panel {
+  padding: 40px 24px;
+  text-align: center;
+  background: rgba(4, 6, 14, 0.32);
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+}
+
+.empty-panel.compact {
+  padding: 26px 20px;
+}
+
+.empty-glyph {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: 14px;
+  background: var(--glass-pill);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  display: grid;
+  place-items: center;
+  color: var(--text-strong);
+}
+
+.empty-glyph .ic {
+  width: 22px;
+  height: 22px;
+}
+
+.empty-glyph.small {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  margin-bottom: 8px;
+}
+
+.empty-title {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 640;
+  color: var(--text-strong);
+}
+
+.more-wrap {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+/* Liquid Glass Modal Sheets (What's New, Settings, Messages, Lightbox) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 4, 10, 0.56);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 60;
+  animation: macBackdropFade 0.12s ease-out;
+}
+
+.modal-box {
+  width: 100%;
+  max-width: 650px;
+  max-height: 84vh;
+  background: var(--glass-elevated);
+  -webkit-backdrop-filter: saturate(220%) blur(48px);
+  backdrop-filter: saturate(220%) blur(48px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.68),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
+  animation: macSheetPop 0.16s var(--spring);
+}
+
+.whats-new-box {
+  max-width: 660px;
+}
+
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 18.5px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  color: var(--text-strong);
+}
+
+.modal-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-close-pill {
+  border-radius: 999px;
+}
+
+.modal-sub {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+}
+
+/* What's New Modal Window Controls & Release Cards */
+.wn-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wn-search {
+  flex: 1 1 180px;
+  min-width: 160px;
+  border-radius: 999px;
+  padding: 0 14px;
+}
+
+.release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.release-card {
+  padding: 15px 17px;
+  background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.09) 0%,
+      rgba(255, 255, 255, 0.025) 100%
+    ),
+    rgba(6, 8, 16, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transition: border-color 0.12s ease, transform 0.12s var(--spring);
+}
+
+.release-card:hover {
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+.release-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.release-title-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.release-version {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(48, 209, 88, 0.18);
+  border: 1px solid rgba(48, 209, 88, 0.42);
+  color: #52e878;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 660;
+}
+
+.release-headline {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 640;
+  color: var(--text-strong);
+}
+
+.release-meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+}
+
+.release-items {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.release-items li strong {
+  color: var(--text-strong);
+  font-weight: 620;
+}
+
+.item-scope {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 620;
+  color: #82d4ff;
+  background: rgba(10, 132, 255, 0.18);
+  border: 1px solid rgba(100, 210, 255, 0.32);
+  border-radius: 6px;
+}
+
+/* Messages Dialog List */
+.texts-dialog-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text-dialog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  background: rgba(6, 8, 16, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.12s var(--spring);
+}
+
+.text-dialog-row:hover {
+  background: rgba(10, 132, 255, 0.18);
+  border-color: rgba(100, 210, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.text-dialog-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--text-strong);
+  overflow-wrap: anywhere;
+}
+
+/* System Settings Grouped Inset Form */
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-group-label {
+  font-size: 11.5px;
+  font-weight: 660;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  color: var(--muted);
+  padding: 4px 4px 0;
+}
+
+.settings-group {
+  background: rgba(5, 7, 15, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  overflow: visible;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.setting-row:first-child {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-title {
+  font-size: 13.5px;
+  font-weight: 620;
+  color: var(--text-strong);
+}
+
+.setting-controls-inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Liquid Glass Range Slider */
+.pp-range,
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 128px;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--blue) 0%,
+    var(--cyan) var(--range-pct, 75%),
+    rgba(255, 255, 255, 0.16) var(--range-pct, 75%),
+    rgba(255, 255, 255, 0.16) 100%
+  );
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  outline: none;
+  cursor: pointer;
+}
+
+.pp-range::-webkit-slider-thumb,
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 7px rgba(0, 0, 0, 0.48),
+    0 0 0 1px rgba(10, 132, 255, 0.25);
+  cursor: pointer;
+  transition: transform 0.12s var(--spring), box-shadow 0.12s ease;
+}
+
+.pp-range::-webkit-slider-thumb:hover,
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow:
+    0 3px 10px rgba(0, 0, 0, 0.56),
+    0 0 0 3px rgba(10, 132, 255, 0.28);
+}
+
+.pp-range::-moz-range-thumb,
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 7px rgba(0, 0, 0, 0.48);
+  cursor: pointer;
+  transition: transform 0.12s var(--spring);
+}
+
+/* Toggle Switch for Checkboxes */
+.pp-check {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 44px;
+  height: 25px;
+  background: rgba(120, 120, 128, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.14s var(--spring), border-color 0.14s var(--spring);
+}
+
+.pp-check::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  transition: transform 0.14s var(--spring);
+}
+
+.pp-check:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.pp-check:checked::after {
+  transform: translateX(19px);
+}
+
+/* Preview Lightbox */
+.lightbox-box {
+  width: 100%;
+  max-width: 1140px;
+  height: 88vh;
+  background: var(--glass-elevated);
+  -webkit-backdrop-filter: saturate(220%) blur(48px);
+  backdrop-filter: saturate(220%) blur(48px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.72),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.28);
+  animation: macSheetPop 0.16s var(--spring);
+}
+
+.lightbox-bar {
+  padding: 12px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lightbox-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.quicklook-badge {
+  padding: 3px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-strong);
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+.lightbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.lightbox-stage {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(2, 3, 8, 0.55);
+  padding: 20px;
+  overflow: auto;
+}
+
+#lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.6);
+}
+
+/* Dynamic Island / HUD Toast */
+.toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 22px;
+  background: var(--glass-elevated);
+  -webkit-backdrop-filter: saturate(220%) blur(36px);
+  backdrop-filter: saturate(220%) blur(36px);
+  color: var(--text-strong);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  font-size: 13px;
+  font-weight: 620;
+  border-radius: 999px;
+  box-shadow:
+    0 14px 36px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  z-index: 90;
+  animation: macHudPop 0.14s var(--spring);
+}
+
+@keyframes macTileIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes macBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes macSheetPop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes macHudPop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes macBannerSlide {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .brand-sub {
+    display: none;
+  }
+  #rail-toggle {
+    display: inline-flex;
+  }
+  .view {
+    grid-template-columns: 1fr;
+  }
+  .side {
+    display: none;
+    position: fixed;
+    top: 68px;
+    right: 16px;
+    width: 304px;
+    max-height: calc(100vh - 84px);
+    overflow-y: auto;
+    z-index: 40;
+  }
+  .side.open {
+    display: flex;
+    animation: macSheetPop 0.15s var(--spring);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

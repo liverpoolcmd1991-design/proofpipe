@@ -71,9 +71,9 @@ export default [
     },
   },
 
-  // PC harness classic scripts (browser globals only)
+  // Browser classic scripts
   {
-    files: ['public/app.js', 'public/phone.js', 'public/scan.js'],
+    files: ['public/app.js', 'public/phone.js'],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 'latest',
@@ -81,7 +81,7 @@ export default [
       globals: { ...globals.browser, ...CROSS_SCRIPT },
     },
     rules: {
-      ...js.configs.recommended.rules, // merge — see the note above
+      ...js.configs.recommended.rules,
       'no-unused-vars': ['error', NO_UNUSED],
       'no-empty': ALLOW_EMPTY_CATCH,
     },

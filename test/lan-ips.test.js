@@ -34,7 +34,7 @@ test('tunnel adapters of every common vendor rank last', () => {
 test('real LAN ranges keep their existing precedence: 192.168, then 10', () => {
   const ips = lanIPs({
     'Ethernet 3': nic('203.0.113.9'),
-    'Ethernet 2': nic('172.20.10.2'), // iPhone hotspot
+    'Ethernet 2': nic('172.20.10.2'), // mobile hotspot
     'Wi-Fi': nic('10.0.0.5'),
     'Ethernet': nic('192.168.43.7'), // Android hotspot
   });
@@ -66,3 +66,12 @@ test('a machine with only a VPN still reports it (nothing is dropped)', () => {
   const ips = lanIPs({ 'Windscribe IKEv2': nic('10.189.137.195') });
   assert.deepEqual(ips, ['10.189.137.195']);
 });
+
+test('APIPA link-local 169.254.x.x addresses rank below real LAN and 172.x interfaces', () => {
+  const ips = lanIPs({
+    'eth0': nic('169.254.8.1', '169.254.169.1'),
+    'Wi-Fi': nic('172.20.10.2'),
+  });
+  assert.equal(ips[0], '172.20.10.2', 'routable hotspot beats link-local 169.254.x.x');
+});
+

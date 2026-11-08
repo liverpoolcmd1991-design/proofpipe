@@ -1,33 +1,15 @@
-// Phone PWA service worker. Registered ONLY by phone.js — the PC harness never
-// registers a worker — so this precaches the phone shell and nothing else.
-//
-// KEY SCHEME — canonical, query-stripped, never bumped:
-// Every versioned request (/phone.js?v=abcdef) is stored under ONE key
-// (/phone.js). A new version overwrites the old entry, so old asset versions
-// never accumulate and the cache name NEVER needs a manual bump (the previous
-// proofpipe-v33 scheme keyed by full URL and grew unboundedly until someone
-// remembered to bump it). The cache name below is the last bump ever — it only
-// exists to shed v33's accumulated entries on first activation.
-//
-// SERVING — network-first, cache = offline fallback ONLY:
-// The phone talks to a LAN server it must be fresh against; a cached-first
-// policy would serve OLD bytes for a NEW ?v=hash URL (the stale-shell bug,
-// see PITFALLS #25). So every shell request tries the network first and only
-// falls back to the cache when the network is gone (phone offline / server
-// down). The browser HTTP cache (max-age=86400 on shell assets) still makes
-// repeat loads of the same version instant — no server round trip.
-const CACHE = 'proofpipe-v34'; // stable — do NOT bump (canonical keys self-overwrite)
+// Phone PWA service worker. Registered ONLY by phone.js; precaches the phone
+// shell under canonical query-stripped keys and serves network-first with
+// cache fallback when offline.
+const CACHE = 'proofpipe-v34';
 const SHELL = [
-  // phone PWA: the actual served page is /phone (never /phone.html — that's
-  // the raw source file with literal __PP_VERSION__ placeholders)
   '/phone', '/phone.css', '/phone.js', '/toPng.js', '/queue.js',
   '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png',
-  // icons this app actually renders (harness-only icons excluded)
-  '/icons/camera.svg', '/icons/chevron-up.svg', '/icons/clipboard-copy.svg',
-  '/icons/download.svg', '/icons/file.svg', '/icons/images.svg',
-  '/icons/mail.svg', '/icons/monitor.svg', '/icons/monitor-down.svg',
-  '/icons/more-vertical.svg', '/icons/package.svg', '/icons/rotate-cw.svg',
-  '/icons/send-horizontal.svg', '/icons/trash-2.svg', '/icons/upload.svg',
+  '/icons/camera.svg', '/icons/chevron-up.svg', '/icons/download.svg',
+  '/icons/file.svg', '/icons/images.svg', '/icons/mail.svg',
+  '/icons/monitor.svg', '/icons/monitor-down.svg', '/icons/more-vertical.svg',
+  '/icons/package.svg', '/icons/rotate-cw.svg', '/icons/send-horizontal.svg',
+  '/icons/smartphone.svg', '/icons/trash-2.svg', '/icons/upload.svg',
   '/icons/x.svg',
 ];
 const SHELL_SET = new Set(SHELL);

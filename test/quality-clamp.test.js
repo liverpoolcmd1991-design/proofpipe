@@ -5,7 +5,7 @@
 //     "purely to protect memory" — so a 1080×24000 scrolling screenshot pasted
 //     as 369×8192, 12% of its pixels, with no signal anywhere in the UI.
 //   · the phone's HEIC→JPEG format conversion inherited qualityCompress's
-//     4096px quality-reduction clamp through a bare default, so a 48MP iPhone
+//     4096px quality-reduction clamp through a bare default, so a 48MP phone
 //     HEIC lost 74% of its pixels with the quality setting OFF.
 //
 // Both are pinned BEHAVIOURALLY: a stub canvas records the exact pixel size the

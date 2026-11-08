@@ -98,7 +98,7 @@ export function awaitFileIdle(abs, ms = 5000) {
 }
 
 export function registerCleanup(app, ctx) {
-  const { settings, stmts, db, bytes, notify, saveSettings, csrfSafe, logEvent, autoCaptureIds, paths } = ctx;
+  const { settings, stmts, bytes, notify, saveSettings, csrfSafe, logEvent, autoCaptureIds, paths } = ctx;
   const P = () => paths(); // live: never cache — relocation reassigns these
 
   // ---------- auto-cleanup: drop the OLDEST captures past 80% of the cap ----------
@@ -156,12 +156,7 @@ export function registerCleanup(app, ctx) {
     try {
       // created_at is SQLite datetime('now') UTC text — the comparison is exact
       const cutoff = `-${settings.retentionDays} days`;
-      // batched: LIMIT 500 per pass so deleting a huge backlog never blocks the
-      // event loop for seconds; the next capture (or setting change) sweeps again
-      const old = db.prepare("SELECT * FROM captures WHERE created_at < datetime('now', ?) ORDER BY id ASC LIMIT 500").all(cutoff);
-      // SILENT removals + ONE event at the end. A per-row notify made every
-      // client re-render per deletion, and the phone refetches its whole list on
-      // each 'deleted' — a 500-row pass was 500 events × 2 round-trips.
+      const old = stmts.listExpiredCaptures.all(cutoff);
       for (const cap of old) await removeCaptureRow(cap, { silent: true });
       if (old.length) {
         notify('deleted'); // payload-less: clients refresh once (see CONVENTIONS)
@@ -217,11 +212,8 @@ export function registerCleanup(app, ctx) {
     cleanupRunning = true;
     try {
       let removed = 0;
-      // hoisted: this SELECT used to be re-prepared on every loop iteration
-      const oldestStmt = db.prepare('SELECT * FROM captures ORDER BY id ASC LIMIT 1');
-      // oldest first (lowest id); stop as soon as we're back under the threshold
       while (bytes.total > maxStoreBytes() * 0.8) {
-        const oldest = oldestStmt.get();
+        const oldest = stmts.oldestCapture.get();
         if (!oldest) break;
         await removeCaptureRow(oldest, { silent: true });
         removed++;
@@ -263,10 +255,8 @@ export function registerCleanup(app, ctx) {
     fileCleanupRunning = true;
     try {
       let removed = 0;
-      const oldestStmt = db.prepare('SELECT * FROM files ORDER BY id ASC LIMIT 1'); // hoisted
-      // oldest first (lowest id); stop as soon as we're back under the threshold
       while (bytes.files > FILES_CLEANUP_THRESHOLD) {
-        const oldest = oldestStmt.get();
+        const oldest = stmts.oldestFile.get();
         if (!oldest) break;
         await removeFileRow(oldest, { silent: true });
         removed++;

@@ -21,13 +21,14 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { resolveAutoTarget } from './browser.js';
 import { beginFileRead, endFileRead } from './cleanup.js';
+import { randomToken } from './util.js';
 
 // The accept ceiling for one capture, in pixels. The server stores the ORIGINAL
 // bytes untouched and only derives a 400px thumbnail, so this number is a
 // decompression-bomb guard AND a promise the sender can rely on: anything under
 // it is stored at the resolution it arrived at.
-// 64MP covers every real phone sensor mode (iPhone 48MP HEIC = 8064×6048,
-// Android 50MP = 8160×6120, 64MP sensors = 9248×6936), so a full-resolution
+// 64MP covers high-resolution phone sensor modes (48MP HEIC = 8064×6048,
+// 50MP = 8160×6120, 64MP sensors = 9248×6936), so a full-resolution
 // capture is never refused and the sender never has to downscale it to fit.
 // Above it the upload is refused (413) rather than downscaled: shrinking a
 // photo the user never asked to shrink is exactly what the quality setting
@@ -39,11 +40,11 @@ export const MAX_PIXELS = 64_000_000;
 
 export function createStore(ctx) {
   const sharp = ctx.sharp; // injected — see the threadpool note above
-  const { settings, stmts, db, bytes, notify, autoCaptureIds, paths, cleanup } = ctx;
+  const { settings, stmts, bytes, notify, autoCaptureIds, paths, cleanup } = ctx;
   // live-extension presence probe (server/sse.js hasBrowser), injected so
   // autoTarget can fall back to 'default' when the picked browser is absent.
   const browserPresent = ctx.browserPresent || (() => false);
-  // heif covers iPhone HEIC photos (Android/iOS share-target sends ORIGINAL bytes);
+  // heif covers HEIC photos (mobile share-target sends ORIGINAL bytes);
   // heif_sequence is the format name libvips reports for some HEIF variants.
   const EXT = { jpeg: '.jpg', png: '.png', webp: '.webp', gif: '.gif', avif: '.avif', tiff: '.tiff', heif: '.heic', heif_sequence: '.heic' };
   // header-only probe: rejects non-images + bombs cheaply; the ORIGINAL bytes are
@@ -112,9 +113,8 @@ export function createStore(ctx) {
   const ORPHAN_GRACE_MS = 10 * 60_000; // don't touch files younger than this (in-flight uploads)
   async function bootSweep() {
     const { captures: CAPTURES, files: FILES } = paths(); // live paths — see header
-    const known = new Map(db.prepare('SELECT id, file FROM captures').all().map(r => [r.file, r.id]));
-    // one prepared query for all rows missing a byte size (was: re-prepare per row)
-    const rowsNeedingSize = db.prepare('SELECT id, file FROM captures WHERE bytes IS NULL OR bytes = 0').all();
+    const known = new Map(stmts.listAllCaptureFiles.all().map(r => [r.file, r.id]));
+    const rowsNeedingSize = stmts.listCapturesMissingBytes.all();
     const sizes = new Map();
     let removed = 0;
     // any file that is neither a known original nor the thumbnail of a known
@@ -171,7 +171,7 @@ export function createStore(ctx) {
     // file transfers: same orphan sweep for data/files/ (no thumbs, no sizes to
     // backfill — file bytes are recorded at upload time). data/inbox/ is never
     // swept: those are user-visible copies, not pipeline state.
-    const knownFiles = new Set(db.prepare('SELECT file FROM files').all().map(r => r.file));
+    const knownFiles = new Set(stmts.listAllFileNames.all().map(r => r.file));
     let filesRemoved = 0;
     let fileList = [];
     try { fileList = (await fsp.readdir(FILES, { withFileTypes: true })).filter(d => d.isFile()).map(d => d.name); } catch {}
@@ -220,7 +220,7 @@ export function createStore(ctx) {
       }
       // streamed straight to disk: no 0–20 MB Buffer in the heap (toBuffer copied
       // the whole file into memory AND back out to disk — GC pressure → jank bursts).
-      const tmpA = path.join(CAPTURES, `t-tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      const tmpA = path.join(CAPTURES, `t-tmp-${Date.now()}-${randomToken()}`);
       try {
         await pipeline(part.file, fs.createWriteStream(tmpA));
       } catch (e) {
@@ -237,14 +237,6 @@ export function createStore(ctx) {
         meta = await probeImage(tmpA);
       } catch (e) {
         fsp.rm(tmpA, { force: true }).catch(() => {});
-        // Over the pixel ceiling is TERMINAL, exactly like the byte cap: the
-        // server can never accept these bytes, so the phone must stop retrying
-        // (it used to retry a >30MP photo every 5 minutes forever, silently)
-        // and say WHY. 415 stays reserved for "not a supported image", which is
-        // genuinely retryable — a newer server build may accept the format.
-        // sharp enforces limitInputPixels itself ("Input image exceeds pixel
-        // limit") and the manual check below is the belt to that brace — both
-        // spellings mean the same permanent condition.
         const tooBig = /too many pixels|pixel limit/i.test(String(e?.message || e));
         const err = new Error(tooBig ? 'too many pixels' : 'not a supported image');
         err.status = tooBig ? 413 : 415;
@@ -252,7 +244,7 @@ export function createStore(ctx) {
       }
       let size = 0;
       try { size = (await fsp.stat(tmpA)).size; } catch {}
-      const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${EXT[meta.format] || '.jpg'}`;
+      const name = `${Date.now()}-${randomToken()}${EXT[meta.format] || '.jpg'}`;
       // rename into place; roll back on any failure
       const finalPath = path.join(CAPTURES, name);
       try {
@@ -351,7 +343,7 @@ export function createStore(ctx) {
     const { captures: CAPTURES } = paths(); // live path — see header
     // only a known, image-typed ORIGINAL row may be built (a t- name or an
     // unknown name must never reach sharp — that was the decoy-file hole)
-    const row = db.prepare('SELECT id, file FROM captures WHERE file = ?').get(base);
+    const row = stmts.getCaptureByFile.get(base);
     if (!row) return null;
     if (!Object.values(EXT).some(ext => base.endsWith(ext))) return null;
     const inflight = thumbJobs.get(base);

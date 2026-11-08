@@ -1,15 +1,16 @@
 {
   "name": "proofpipe",
-  "version": "1.22.0",
+  "version": "1.23.0",
   "description": "Phone photo (and text) to PC, one tap — for pasting into AI chats",
   "license": "MIT",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node --require ./scripts/threadpool.cjs server.js",
+    "build": "eslint .",
     "icons": "node scripts/gen-icons.js",
     "gen-cert": "node scripts/gen-cert.js",
     "lint": "eslint .",
@@ -19,7 +20,6 @@
     "@fastify/compress": "^9.2.0",
     "@fastify/multipart": "^9.0.1",
     "@fastify/static": "^10.1.3",
-    "better-sqlite3": "^11.7.0",
     "fastify": "^5.2.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.4"

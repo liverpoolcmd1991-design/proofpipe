@@ -202,3 +202,71 @@ test('content: booting while hidden must not abort the script (TDZ on pollTimer)
   assert.equal(win.localStorage.getItem('pp_fab_hidden_site'), null, 'per-site flag cleared');
   assert.notEqual(host().style.display, 'none', 'tray comes back');
 });
+
+test('popup: Quick Send sends composer note, active tab link, and visible tab screenshot', { skip: skipOpt }, async () => {
+  const store = makeStorage();
+  const sentMessages = [];
+  let activeTab = { id: 42, windowId: 7, url: 'https://example.com/article?id=9' };
+  const dom = new JSDOM(read('popup.html'), {
+    runScripts: 'dangerously', url: 'chrome-extension://test/popup.html', pretendToBeVisual: true,
+  });
+  const win = dom.window;
+  win.chrome = {
+    storage: { local: store.api },
+    runtime: {
+      sendMessage: async msg => {
+        sentMessages.push(msg);
+        if (msg.type === 'sendText') return { ok: true, id: 101 };
+        if (msg.type === 'uploadCapture') return { ok: true, id: 202, file: 'shot.png' };
+        if (msg.type === 'captures') return [];
+        throw new Error('unexpected message');
+      },
+      onMessage: { addListener: () => {} },
+    },
+    tabs: {
+      query: () => Promise.resolve([activeTab]),
+      sendMessage: () => Promise.reject(new Error('no content script')),
+      captureVisibleTab: async (winId, opts) => {
+        assert.equal(winId, 7);
+        assert.equal(opts.format, 'png');
+        return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+      },
+    },
+  };
+  win.fetch = () => Promise.reject(new Error('force SW relay'));
+  for (const f of ['toPng.js', 'discovery.js', 'files.js', 'popup.js']) win.eval(read(f));
+  await settle(60);
+
+  // 1. Inline text composer via Enter
+  const input = win.document.querySelector('#quick-text');
+  const status = win.document.querySelector('#status');
+  input.value = 'Check this build note';
+  input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  await settle();
+  assert.ok(sentMessages.some(m => m.type === 'sendText' && m.body === 'Check this build note'));
+  assert.equal(input.value, '');
+  assert.equal(status.textContent, '✓ Sent to phone');
+  assert.equal(status.classList.contains('err'), false);
+
+  // 2. 1-click active tab link
+  win.document.querySelector('#send-tab-link').click();
+  await settle();
+  assert.ok(sentMessages.some(m => m.type === 'sendText' && m.body === 'https://example.com/article?id=9'));
+  assert.equal(status.textContent, '✓ Tab link sent to phone');
+
+  // 3. Restricted chrome:// page guard
+  activeTab = { id: 43, windowId: 7, url: 'chrome://settings' };
+  win.document.querySelector('#send-tab-link').click();
+  await settle();
+  assert.equal(status.textContent, 'Open a web page tab to send its link.');
+  assert.equal(status.classList.contains('err'), true);
+
+  // 4. Visible tab screenshot upload
+  activeTab = { id: 42, windowId: 7, url: 'https://example.com/article?id=9' };
+  win.document.querySelector('#send-tab-shot').click();
+  await settle(60);
+  const up = sentMessages.find(m => m.type === 'uploadCapture');
+  assert.ok(up && up.dataUrl.startsWith('data:image/png;base64,'));
+  assert.equal(status.textContent, '✓ Screenshot sent — live on phone & workbench');
+});
+

@@ -70,17 +70,37 @@ function statusDetail() {
 }
 
 // ---------- transfer progress ----------
-let transferTotal = 0, transferDone = 0, transferActive = null;
+let transferTotal = 0, transferDone = 0, transferActive = null, transferSeq = 0;
+const activeTransfers = new Map();
 function transferBegin(name, total) {
   if (!transferTotal) { transferTotal = total || 1; transferDone = 0; }
-  transferActive = { name, pct: 0 };
+  else if (total && transferDone + activeTransfers.size >= transferTotal) transferTotal++;
+  const id = ++transferSeq;
+  const entry = { id, name, pct: 0 };
+  activeTransfers.set(id, entry);
+  transferActive = entry;
+  renderTransferStatus();
+  return id;
+}
+function transferProgress(idOrName, pct) {
+  let entry = activeTransfers.get(idOrName);
+  if (!entry) {
+    for (const v of activeTransfers.values()) if (v.name === idOrName) { entry = v; break; }
+  }
+  if (!entry) return;
+  entry.pct = pct;
+  transferActive = entry;
   renderTransferStatus();
 }
-function transferProgress(name, pct) { transferActive = { name, pct }; renderTransferStatus(); }
-function transferEnd(name) {
+function transferEnd(idOrName) {
+  let key = activeTransfers.has(idOrName) ? idOrName : null;
+  if (key == null) {
+    for (const [k, v] of activeTransfers) if (v.name === idOrName) { key = k; break; }
+  }
+  if (key != null) activeTransfers.delete(key);
   transferDone++;
-  if (transferActive && transferActive.name === name) transferActive = null;
-  if (transferDone >= transferTotal) { // batch finished — hand the line back
+  transferActive = activeTransfers.values().next().value || null;
+  if (transferDone >= transferTotal && !activeTransfers.size) { // batch finished — hand the line back
     transferTotal = 0; transferDone = 0; transferActive = null;
     const strip = $('#status-strip');
     if (strip) {
@@ -94,11 +114,18 @@ function transferEnd(name) {
 }
 function renderTransferStatus() {
   const el = $('#status-sub');
+  let sumFrac = 0;
+  let leadEntry = transferActive;
+  let bestPct = -2;
+  for (const entry of activeTransfers.values()) {
+    const f = entry.pct < 0 ? 0.58 : Math.max(0.06, Math.min(1, entry.pct / 100));
+    sumFrac += f;
+    if (entry.pct >= bestPct) { bestPct = entry.pct; leadEntry = entry; }
+  }
+  transferActive = leadEntry;
   if (!el || !transferActive) return;
-  const n = transferTotal > 1 ? ` · ${Math.min(transferDone + 1, transferTotal)}/${transferTotal}` : '';
+  const n = transferTotal > 1 ? ` · ${Math.min(transferDone + activeTransfers.size, transferTotal)}/${transferTotal}` : '';
   const p = transferActive.pct;
-  // pct < 0 = indeterminate. fetch() cannot report upload bytes, so the photo
-  // path has no percentage to show — an ellipsis is honest, a fake 0% is not.
   const lead = p < 0 ? 'sending…' : (p === 100 ? 'processing…' : p + '%');
   el.textContent = `${lead} ${transferActive.name}${n}`; // textContent only — XSS rule
   // setStatusSub() dedupes against this cache, so a direct write that skipped it
@@ -108,8 +135,7 @@ function renderTransferStatus() {
   const strip = $('#status-strip');
   if (strip) {
     strip.dataset.state = 'busy';
-    const itemFrac = p < 0 ? 0.58 : Math.max(0.08, Math.min(1, p / 100));
-    const scale = Math.max(0.14, Math.min(1, (transferDone + itemFrac) / Math.max(1, transferTotal)));
+    const scale = Math.max(0.14, Math.min(1, (transferDone + sumFrac) / Math.max(1, transferTotal)));
     strip.style.setProperty('--xfer-scale', scale.toFixed(3));
   }
 }
@@ -254,17 +280,40 @@ async function upload(blob, opts = {}) {
   // The dedupe key makes a retry harmless anyway — this just avoids the churn.
   // ~1 MB/s floor + 15 s overhead, clamped to [30s, 10min].
   const timeoutMs = Math.min(600000, Math.max(30000, 15000 + (sendBlob.size / (1024 * 1024)) * 1000));
-  const res = await fetch(SERVER + '/upload', { method: 'POST', body: fd, signal: AbortSignal.timeout(timeoutMs) });
-  if (!res.ok) {
-    const err = new Error('upload failed ' + res.status);
-    err.status = res.status; // let the queue distinguish 429 / 413 / 415 from a gone server
-    // the server's reason string travels with the error: a 413 measured as
-    // genuinely over the cap is terminal (poisonReason 'too-large'), while a
-    // 415 is retryable — the unpoison migration uses the same distinction.
-    try { const b = await res.clone().json(); if (b && b.error) err.reason = String(b.error); } catch {}
-    throw err;
-  }
-  return res.json();
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', SERVER + '/upload');
+    xhr.responseType = 'json';
+    xhr.timeout = timeoutMs;
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable || typeof opts.onProgress !== 'function') return;
+      opts.onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let body = xhr.response;
+        if (!body && xhr.responseText) {
+          try { body = JSON.parse(xhr.responseText); } catch {}
+        }
+        resolve(body);
+        return;
+      }
+      const err = new Error('upload failed ' + xhr.status);
+      err.status = xhr.status; // let the queue distinguish 429 / 413 / 415 from a gone server
+      // the server's reason string travels with the error: a 413 measured as
+      // genuinely over the cap is terminal (poisonReason 'too-large'), while a
+      // 415 is retryable — the unpoison migration uses the same distinction.
+      let reason = xhr.response && xhr.response.error;
+      if (!reason && xhr.responseText) {
+        try { reason = JSON.parse(xhr.responseText)?.error; } catch {}
+      }
+      if (reason) err.reason = String(reason);
+      reject(err);
+    };
+    xhr.onerror = () => reject(new Error('network'));
+    xhr.ontimeout = () => reject(new Error('timeout'));
+    xhr.send(fd);
+  });
 }
 
 // ---------- outbox (IndexedDB) ----------
@@ -441,17 +490,15 @@ async function flushOutbox() {
           if (!stillThere) continue;
         } catch { continue; }
         usedLast = true;
-        transferBegin('queued photos', items.length);
-        transferProgress('photo', -1); // fetch() cannot report bytes
+        const tid = transferBegin('queued photos', items.length);
         try {
-          const result = await upload(v.blob, { auto: v.auto, dedupeKey: v.dedupeKey }); // stored key: retries stay idempotent
+          const result = await upload(v.blob, { auto: v.auto, dedupeKey: v.dedupeKey, onProgress: p => transferProgress(tid, p) }); // stored key: retries stay idempotent
           const item = recentItems.find(i => i.outboxKey === job.key);
           await outboxDelete(job.key);
           if (item) {
             item.outboxKey = null;
             markSent(item.el, result);
           }
-          transferEnd('photo');
         } catch (e) {
           const status = e && e.status;
           const book = PPQueue.onFailure(v, status);
@@ -469,7 +516,8 @@ async function flushOutbox() {
           if (book.poisoned) flash(e?.reason === 'too many pixels'
             ? tooManyPixelsMsg()
             : 'Photo is over the size cap — it was not sent');
-          transferEnd('photo');
+        } finally {
+          transferEnd(tid);
         }
       }
     };
@@ -861,8 +909,9 @@ async function retryItem(item) {
   if (!dk) dk = newKey(); // tile had no record and no key — mint one for this capture
   item.dedupeKey = dk;
   await outboxSetDedupeKey(item.outboxKey, dk); // no-op unless the stored record predates frozen keys
+  const tid = transferBegin('photo', 1);
   try {
-    const result = await upload(item.blob, { auto: item.auto ?? autoPaste, dedupeKey: dk }); // original quality: no downscale/re-encode
+    const result = await upload(item.blob, { auto: item.auto ?? autoPaste, dedupeKey: dk, onProgress: p => transferProgress(tid, p) }); // original quality: no downscale/re-encode
     // manual success: remove the queued record so the auto-flush can't re-upload it
     if (item.outboxKey != null) await outboxDelete(item.outboxKey);
     item.outboxKey = null;
@@ -879,6 +928,7 @@ async function retryItem(item) {
       ? tooManyPixelsMsg()
       : 'Still failing — queued for auto-sync');
   } finally {
+    transferEnd(tid);
     if (key != null) inflightKeys.delete(key);
   }
 }
@@ -1400,12 +1450,10 @@ async function handleFiles(files) {
     while (qi < jobs.length) {
       while (Date.now() - last429 < 1500) await sleep(last429 + 1500 - Date.now());
       const job = jobs[qi++];
-      transferBegin('photos', jobs.length);
-      transferProgress('photo', -1); // fetch() cannot report bytes — indeterminate
+      const tid = transferBegin('photos', jobs.length);
       try {
-        const result = await upload(job.blob, { auto: job.tile.auto, dedupeKey: job.dedupeKey });
+        const result = await upload(job.blob, { auto: job.tile.auto, dedupeKey: job.dedupeKey, onProgress: p => transferProgress(tid, p) });
         markSent(job.tile.el, result);
-        transferEnd('photo');
       } catch (e) {
         if (e && e.status === 429) last429 = Date.now();
         // ALWAYS enqueue durably first — the image must never be lost even if
@@ -1417,7 +1465,8 @@ async function handleFiles(files) {
           job.tile.el.classList.add('failed');  // or tap to retry now
           setTileState(job.tile.el, 'not sent');
         } else if (!key) flash('Some photos could not be queued — index offline'); // no IndexedDB
-        transferEnd('photo');
+      } finally {
+        transferEnd(tid);
       }
     }
   };
@@ -1526,7 +1575,7 @@ function transferA11y(name, pct) {
 function uploadFileXHR(blob, name) {
   return new Promise((resolve, reject) => {
     const label = name || 'file';
-    transferBegin(label, transferBatchSize());
+    const tid = transferBegin(label, transferBatchSize());
     const xhr = new XMLHttpRequest();
     xhr.open('POST', SERVER + '/api/files');
     xhr.responseType = 'json';
@@ -1536,17 +1585,17 @@ function uploadFileXHR(blob, name) {
     xhr.upload.onprogress = e => {
       if (!e.lengthComputable) return;
       const p = Math.round((e.loaded / e.total) * 100);
-      transferProgress(label, p);
+      transferProgress(tid, p);
       transferA11y(label, p);
     };
     xhr.onload = () => {
-      transferEnd(label);
+      transferEnd(tid);
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
       else { const err = new Error('upload failed ' + xhr.status); err.status = xhr.status; reject(err); }
     };
-    xhr.onerror = () => { transferEnd(label); reject(new Error('network'));
+    xhr.onerror = () => { transferEnd(tid); reject(new Error('network'));
     };
-    xhr.ontimeout = () => { transferEnd(label); reject(new Error('timeout')); };
+    xhr.ontimeout = () => { transferEnd(tid); reject(new Error('timeout')); };
     const fd = new FormData();
     fd.append('dir', 'phone'); // direction badge on the PC (declared BEFORE the file part)
     fd.append('file', blob, label);

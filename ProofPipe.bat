@@ -1,23 +1,8 @@
 @echo off
 title ProofPipe
-rem ProofPipe launcher - double-click to run (sits in the repo root).
-rem Starts the server and opens the harness; closing this window stops it.
+rem ProofPipe launcher - double-click to start background daemon + Windows tray.
+rem Pass --console to run in an attached foreground terminal window instead.
 cd /d "%~dp0"
-
-rem port already busy? (e.g. the server is already running somewhere else).
-rem Resolve the port the server will actually use (PORT env wins; default 8787)
-rem and match it with the word-boundary form: plain ":8787" also matched
-rem ":87870" etc. (substring hit).
-set "PPP=%PORT%"
-if "%PPP%"=="" set "PPP=8787"
-netstat -ano | findstr /r /c:":%PPP% *.*LISTENING" >nul 2>&1
-if not errorlevel 1 (
-  echo ProofPipe is ALREADY RUNNING on port %PPP% - just use it.
-  echo Close the other ProofPipe window first if you want a fresh one.
-  echo.
-  pause
-  exit /b 1
-)
 
 if not exist node_modules (
   echo Installing dependencies, one moment...
@@ -27,17 +12,27 @@ if not exist node_modules (
 rem more libuv threads: parallel uploads (fs + sharp) do not queue behind each other
 set UV_THREADPOOL_SIZE=16
 
-rem tell the server this launch came from the .bat: once it is listening it
-rem opens the harness itself, in the browser chosen in Settings. (The .bat
-rem can't read settings.json; the server can — and it also removes the old
-rem "wait 2s then open" race that could land on a dead page.)
+if /i "%~1"=="--console" goto :console
+
+rem Default: launch background daemon + Windows system tray icon (no lingering CMD window)
 set PP_OPEN_BROWSER=1
+node scripts\daemon.js start --open >nul 2>&1
+start "" /B powershell.exe -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0scripts\tray.ps1"
+exit /b 0
 
-rem belt + suspenders: the server itself refuses a second instance via a
-rem PID-guarded lockfile (data/proofpipe.lock) covering ANY port; this early
-rem check just gives a friendlier exit for the common double-click case.
-rem (honours the PORT env var; the server lock covers every remaining case)
+:console
+set "PPP=%PORT%"
+if "%PPP%"=="" set "PPP=8787"
+netstat -ano | findstr /r /c:":%PPP% *.*LISTENING" >nul 2>&1
+if not errorlevel 1 (
+  echo ProofPipe is ALREADY RUNNING on port %PPP% - just use it.
+  echo Stop the background server first with: npm run daemon -- stop
+  echo.
+  pause
+  exit /b 1
+)
 
+set PP_OPEN_BROWSER=1
 echo ProofPipe server running - KEEP THIS WINDOW OPEN.
 echo Closing this window stops the server.
 echo.

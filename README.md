@@ -35,6 +35,7 @@ npm start
 ## Scripts
 
 - `npm start` — Start the server (preloads `scripts/threadpool.cjs` to size `UV_THREADPOOL_SIZE` before libuv initializes).
+- `npm run daemon -- <start|stop|restart|status|logs|tray|autostart>` — Manage the detached background daemon and OS login autostart (plus `ProofPipe.bat` / `ProofPipe.bat --console` on Windows).
 - `npm test` — Run all automated test suites (`node --test "test/*.test.js"`).
 - `npm run lint` — Run ESLint across server, client, extension, and test files.
 - `npm run icons` — Regenerate PNG icon assets from source vector primitives.

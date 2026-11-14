@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "ProofPipe",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzuLlJ2InyaAmB9oTCMujRntSkJph8kEM7el/eE35a4rr5IEIHgoR/WJ9NopwgsRSHT8TG9yDNo7EAiF5n8DNirPymikvb84LS8Ny+BX/xNCj+fqMLk+nCeO3RcPkyBhSr6nywY6tOW0UdydGFTRGnhpVre8GinQh/BMx2q7s2VqQ7aTA7LrWSQTVisJaCbYPYpmnuePSPbrW4K9QRMB447nE1ZsazK7IY/fsSbiLE6TEATM3qrsHiryMUh0UEuu10SRLGLuxE9LM3J6NKhVh4eQhuB01ko8r2TOSILKKrMMRus1H3lnjnhcbDsO/IBxU0iLboaFCSmLfYdJAkN1XtQIDAQAB",
   "minimum_chrome_version": "116",
-  "description": "Drag your ProofPipe captures into any chat, on any website.",
-  "permissions": ["alarms", "contextMenus", "scripting", "offscreen", "tabs", "storage"],
+  "description": "Two-way Liquid Glass tray & popup: send links, notes, and screenshots to phone, or drag phone captures into any site.",
+  "permissions": ["activeTab", "alarms", "contextMenus", "scripting", "offscreen", "tabs", "storage"],
   "host_permissions": ["http://localhost/*", "http://127.0.0.1/*", "https://localhost/*", "https://127.0.0.1/*"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [

@@ -2,6 +2,18 @@
 
 All notable changes to ProofPipe are documented in this file.
 
+## [1.24.0] — 2026-11-14
+
+### Added
+- **Byte-Level Phone Photo Upload Progress (`public/phone.js`)**: Replaced indeterminate `fetch()` uploads with `XMLHttpRequest` (`xhr.upload.onprogress`) and a weighted concurrent transfer tracker driving the Liquid Glass status wave (`--xfer-scale`) and live percentage readout.
+- **Two-Way Extension Quick Send (`extension/popup.html`, `extension/popup.js`, `extension/background.js`, `extension/manifest.json`)**: Added an inline text/URL composer (`Enter` sends), one-click active `Tab Link` sender, and one-click visible `Screenshot` uploader (`activeTab` + `/upload`, delivered live to phone and desktop workbench).
+- **Cross-Platform Daemon CLI & Windows System Tray (`scripts/daemon.js`, `scripts/tray.ps1`, `ProofPipe.bat`)**: Added detached daemon management (`npm run daemon -- start|stop|restart|status|logs|tray|autostart`), log rotation, OS login autostart configuration, and a native WinForms `NotifyIcon` tray controller.
+
+### Changed
+- **Extension Liquid Glass Overhaul & Cleanup (`extension/`)**: Unified the in-page floating tray (`content.js`), toolbar popup, and context-menu toasts onto the dark Liquid Glass palette while removing deprecated `dataUrl` base64 relay paths and duplicate inline styles.
+
+---
+
 ## [1.23.0] — 2026-11-08
 
 ### Added

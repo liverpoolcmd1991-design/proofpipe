@@ -1,6 +1,6 @@
 {
   "name": "proofpipe",
-  "version": "1.23.0",
+  "version": "1.24.0",
   "description": "Phone photo (and text) to PC, one tap — for pasting into AI chats",
   "license": "MIT",
   "private": true,
@@ -10,6 +10,7 @@
   },
   "scripts": {
     "start": "node --require ./scripts/threadpool.cjs server.js",
+    "daemon": "node scripts/daemon.js",
     "build": "eslint .",
     "icons": "node scripts/gen-icons.js",
     "gen-cert": "node scripts/gen-cert.js",

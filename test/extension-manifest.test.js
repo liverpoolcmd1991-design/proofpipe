@@ -53,7 +53,7 @@ test('manifest declares the expected baseline permissions', () => {
   const declared = new Set(manifest.permissions || []);
   // pinned explicitly so a careless edit that DROPS one is caught even when no
   // file happens to reference it at the moment (the alarms regression class)
-  for (const p of ['alarms', 'contextMenus', 'scripting', 'offscreen', 'tabs', 'storage']) {
+  for (const p of ['activeTab', 'alarms', 'contextMenus', 'scripting', 'offscreen', 'tabs', 'storage']) {
     assert.ok(declared.has(p), `manifest must declare "${p}"`);
   }
 });
@@ -98,3 +98,12 @@ test('manifest content scripts load the shared modules before their consumers', 
     }
   }
 });
+
+test('deprecated dataUrl base64 media relay is removed across extension scripts', () => {
+  for (const file of ['background.js', 'content.js', 'popup.js']) {
+    const src = fs.readFileSync(path.join(EXT, file), 'utf8');
+    assert.ok(!/type:\s*'dataUrl'|msg\.type\s*===\s*'dataUrl'|fetchDataUrl/.test(src),
+      `${file} should not contain deprecated dataUrl base64 media fallback`);
+  }
+});
+

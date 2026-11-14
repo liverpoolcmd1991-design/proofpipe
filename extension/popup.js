@@ -154,11 +154,6 @@ async function fetchMediaBlob(file) {
     const blob = await bg({ type: 'mediaBlob', file });
     if (blob instanceof Blob) return blob;
   } catch {}
-  try {
-    const dataUrl = await bg({ type: 'dataUrl', file });
-    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return null;
-    return await (await fetch(dataUrl)).blob();
-  } catch {}
   return null;
 }
 
@@ -190,7 +185,7 @@ function copiedFlash(el, msg) {
 }
 
 async function copyCapture(capture, el) {
-  $('#status').textContent = `Copying #${capture.id}…`;
+  setStatus(`Copying #${capture.id}…`);
   try {
     const blob = await fetchMediaBlob(capture.file);
     if (!blob) throw new Error('no image');
@@ -203,6 +198,19 @@ async function copyCapture(capture, el) {
   }
 }
 
+function renderReachError(prefix, err) {
+  const list = $('#list');
+  list.innerHTML = '';
+  const empty = document.createElement('div');
+  empty.className = 'empty';
+  empty.textContent = prefix;
+  const detail = document.createElement('span');
+  detail.className = 'err-detail';
+  detail.textContent = String((err && err.message) || err);
+  empty.appendChild(detail);
+  list.appendChild(empty);
+}
+
 let lastCaps = [];
 
 async function loadList() {
@@ -211,7 +219,7 @@ async function loadList() {
     const list = $('#list');
     list.innerHTML = '';
     if (thumbObserver) thumbObserver.disconnect(); // drop the previous items' targets
-    if (!lastCaps.length) { list.innerHTML = '<div class="empty">No captures yet.<br>Open the phone app and snap your proof.</div>'; return; }
+    if (!lastCaps.length) { list.innerHTML = '<div class="empty">No captures yet.<br>Snap from your phone or click Screenshot above.</div>'; return; }
     // thumbnails stream in per item AS IT SCROLLS INTO VIEW (see thumbObserver)
     for (const c of lastCaps) {
       const d = document.createElement('div');
@@ -242,16 +250,7 @@ async function loadList() {
       list.appendChild(d);
     }
   } catch (e) {
-    const list = $('#list');
-    list.innerHTML = '';
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'ProofPipe server not reachable from Chrome. Start it with ProofPipe.bat, then press ⟳ Sync now. ';
-    const detail = document.createElement('span');
-    detail.style.cssText = 'font-size:10px;color:#6f7274';
-    detail.textContent = String((e && e.message) || e);
-    empty.appendChild(detail);
-    list.appendChild(empty);
+    renderReachError('ProofPipe server not reachable from Chrome. Start ProofPipe, then press ⟳ Sync now. ', e);
   }
 }
 
@@ -300,16 +299,7 @@ async function loadTexts() {
       list.appendChild(d);
     }
   } catch (e) {
-    const list = $('#list');
-    list.innerHTML = '';
-    const empty = document.createElement('div');
-    empty.className = 'empty';
-    empty.textContent = 'ProofPipe server not reachable from Chrome. ';
-    const detail = document.createElement('span');
-    detail.style.cssText = 'font-size:10px;color:#6f7274';
-    detail.textContent = String((e && e.message) || e);
-    empty.appendChild(detail);
-    list.appendChild(empty);
+    renderReachError('ProofPipe server not reachable from Chrome. ', e);
   }
 }
 
@@ -468,5 +458,131 @@ $('#unhide').onclick = async () => {
     setStatus('Open a normal website tab, then try again.', true);
   }
 };
+
+// ---------- two-way quick send: composer, 1-click tab link & screenshot ----------
+async function sendTextToPhone(raw) {
+  const body = String(raw || '').slice(0, 10000).trim();
+  if (!body) return false;
+  try {
+    await bg({ type: 'sendText', body });
+    return true;
+  } catch {}
+  for (const base of await candidateBases()) {
+    try {
+      const r = await fetch(`${base}/api/text`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body, source: 'pc' }),
+        signal: AbortSignal.timeout(JSON_TIMEOUT_MS),
+      });
+      if (r.ok) return true;
+    } catch {}
+  }
+  throw new Error('server unreachable');
+}
+
+async function uploadCaptureDataUrl(dataUrl) {
+  try {
+    return await bg({ type: 'uploadCapture', dataUrl });
+  } catch {}
+  const blob = await (await fetch(dataUrl)).blob();
+  if (!blob || !blob.size) throw new Error('empty screenshot');
+  const fd = new FormData();
+  fd.append('source', 'pc');
+  fd.append('photo', blob, 'tab-capture.png');
+  for (const base of await candidateBases()) {
+    try {
+      const r = await fetch(`${base}/upload`, {
+        method: 'POST',
+        body: fd,
+        signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
+      });
+      if (r.ok) return await r.json();
+    } catch {}
+  }
+  throw new Error('upload failed');
+}
+
+function wireQuickSend() {
+  const input = $('#quick-text');
+  const sendBtn = $('#quick-send-btn');
+  const linkBtn = $('#send-tab-link');
+  const shotBtn = $('#send-tab-shot');
+  if (!input || !sendBtn || !linkBtn || !shotBtn) return;
+
+  const autoResize = () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(76, Math.max(32, input.scrollHeight)) + 'px';
+  };
+  input.addEventListener('input', autoResize);
+
+  const submitQuickText = async () => {
+    const val = input.value.trim();
+    if (!val) { setStatus('Type a note or URL to send.', true); input.focus(); return; }
+    sendBtn.disabled = true;
+    setStatus('Sending to phone…');
+    try {
+      await sendTextToPhone(val);
+      input.value = '';
+      autoResize();
+      setStatus('✓ Sent to phone');
+    } catch {
+      setStatus('Could not reach ProofPipe server.', true);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  };
+  sendBtn.onclick = submitQuickText;
+  input.addEventListener('keydown', e => {
+    if (e.isComposing || e.keyCode === 229) return;
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitQuickText();
+    }
+  });
+
+  linkBtn.onclick = async () => {
+    linkBtn.disabled = true;
+    setStatus('Sending tab link…');
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const url = tab && tab.url ? tab.url.trim() : '';
+      if (!url || !/^https?:\/\//i.test(url)) {
+        setStatus('Open a web page tab to send its link.', true);
+        return;
+      }
+      await sendTextToPhone(url);
+      setStatus('✓ Tab link sent to phone');
+    } catch {
+      setStatus('Could not send tab link — check server.', true);
+    } finally {
+      linkBtn.disabled = false;
+    }
+  };
+
+  shotBtn.onclick = async () => {
+    shotBtn.disabled = true;
+    setStatus('Capturing visible tab…');
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || tab.windowId == null) throw new Error('no active tab');
+      const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      setStatus('Uploading screenshot…');
+      await uploadCaptureDataUrl(dataUrl);
+      setStatus('✓ Screenshot sent — live on phone & workbench');
+      if (activeTab === 'caps') await loadList();
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      if (/permission|cannot access|activeTab|restricted/i.test(msg)) {
+        setStatus('Cannot capture browser system pages.', true);
+      } else {
+        setStatus('Screenshot failed — check ProofPipe server.', true);
+      }
+    } finally {
+      shotBtn.disabled = false;
+    }
+  };
+}
+wireQuickSend();
 
 showTab(activeTab);

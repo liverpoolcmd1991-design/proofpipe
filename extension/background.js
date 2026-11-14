@@ -136,16 +136,6 @@ async function fetchJSON(path) {
   return (await serverFetch(path)).json();
 }
 
-async function fetchDataUrl(path) {
-  const blob = await (await serverFetch(path)).blob();
-  return new Promise((res, rej) => {
-    const f = new FileReader();
-    f.onload = () => res(f.result);
-    f.onerror = () => rej(f.error || new Error('read failed'));
-    f.readAsDataURL(blob);
-  });
-}
-
 // in-flight / landed prefetch blobs (file name -> Promise<Blob>). Auto-paste
 // needs the image bytes a beat later, not immediately — starting the fetch as
 // soon as a paste TARGET is known (instead of when the content script asks)
@@ -205,11 +195,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return sendResponse(await fetchJSON(`/api/text?source=phone&limit=${limit}`));
       }
       if (msg.type === 'sendText') return sendResponse(await postText(String(msg.body || '').slice(0, 10000)));
-      if (msg.type === 'dataUrl') {
-        const file = String(msg.file || '');
-        // unsanitized filenames from content-script context (../, abs URL) stay out
-        if (!PPFiles.valid(file)) return sendResponse({ error: 'bad filename' });
-        return sendResponse(await fetchDataUrl(`/media/${encodeURIComponent(file)}`));
+      if (msg.type === 'uploadCapture') {
+        const dataUrl = String(msg.dataUrl || '');
+        if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(dataUrl)) {
+          return sendResponse({ error: 'invalid capture image' });
+        }
+        return sendResponse(await postCaptureDataUrl(dataUrl));
       }
       if (msg.type === 'mediaBlob') {
         // real Blob over the message channel (structured clone) — the SW's
@@ -271,21 +262,48 @@ async function postText(body) {
   })).json();
 }
 
+async function postCaptureDataUrl(dataUrl) {
+  const blob = await (await fetch(dataUrl)).blob();
+  if (!blob || !blob.size) throw new Error('empty screenshot');
+  const ext = ((blob.type || '').split('/')[1] || 'png').replace('jpeg', 'jpg');
+  const fd = new FormData();
+  fd.append('source', 'pc');
+  fd.append('photo', blob, `tab-capture.${ext}`);
+  return (await serverFetch('/upload', {
+    method: 'POST',
+    body: fd,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })).json();
+}
+
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId !== 'pp-send-text' || !info.selectionText) return;
   const ok = await postText(info.selectionText.slice(0, 10000)).then(() => true).catch(() => false);
-  const note = ok ? 'ProofPipe: text sent to phone ✓' : 'ProofPipe: server not reachable — start ProofPipe.bat';
+  const note = ok ? 'ProofPipe: text sent to phone ✓' : 'ProofPipe: server not reachable — start ProofPipe';
   try {
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: n => {
+      func: (n, isErr) => {
         const d = document.createElement('div');
         d.textContent = n;
-        d.style.cssText = 'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#17181a;color:#e8e8e6;border:1px solid #2a2c2f;border-radius:999px;padding:8px 18px;font:13px system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.4);';
+        d.style.cssText = [
+          'position:fixed', 'top:16px', 'left:50%', 'transform:translateX(-50%)',
+          'z-index:2147483647',
+          `background:${isErr ? 'rgba(54, 16, 22, 0.88)' : 'rgba(14, 20, 38, 0.86)'}`,
+          '-webkit-backdrop-filter:saturate(200%) blur(26px)',
+          'backdrop-filter:saturate(200%) blur(26px)',
+          'color:#f5f7ff',
+          `border:1px solid ${isErr ? 'rgba(255, 69, 58, 0.5)' : 'rgba(48, 209, 88, 0.42)'}`,
+          'border-radius:999px', 'padding:9px 18px',
+          'font:600 13px/1.3 -apple-system,"SF Pro Text",system-ui,sans-serif',
+          'letter-spacing:-0.01em',
+          'box-shadow:0 14px 36px rgba(0,0,0,0.48), inset 0 1px 0 rgba(255,255,255,0.22)',
+          'transition:opacity .2s ease',
+        ].join(';');
         document.documentElement.appendChild(d);
-        setTimeout(() => d.remove(), 2500);
+        setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 220); }, 2350);
       },
-      args: [note],
+      args: [note, !ok],
     });
   } catch {}
 });

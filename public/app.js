@@ -2,6 +2,28 @@ const $ = s => document.querySelector(s);
 
 const RELEASES = [
   {
+    version: 'v1.24.0',
+    date: '2026-11',
+    headline: 'Live Phone XHR Progress, Two-Way Extension Quick Send & Background Daemon',
+    changes: [
+      {
+        scope: 'phone',
+        title: 'Real byte-level upload progress for photos',
+        detail: 'Upgraded photo uploads to XMLHttpRequest with xhr.upload.onprogress tracking so single and concurrent bursts stream real-time percentages into the Liquid Glass status wave.',
+      },
+      {
+        scope: 'extension',
+        title: 'Two-way Quick Send, tab screenshot & Liquid Glass UI',
+        detail: 'Added an inline note/URL composer, one-click Tab Link sender, and visible-tab Screenshot capture to the extension popup, alongside dark Liquid Glass styling for the popup, in-page tray, and page toasts.',
+      },
+      {
+        scope: 'server',
+        title: 'Cross-platform background daemon CLI & Windows tray launcher',
+        detail: 'Added scripts/daemon.js (start, stop, restart, status, logs, autostart) and a zero-dependency Windows system tray monitor (scripts/tray.ps1) wired into ProofPipe.bat.',
+      },
+    ],
+  },
+  {
     version: 'v1.23.0',
     date: '2026-11',
     headline: 'Liquid Glass UX Overhaul, Safe Deletions, Two-Way Sync & Pre-Compiled SQL',

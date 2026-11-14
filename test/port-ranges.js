@@ -9,7 +9,7 @@
 //
 // Layout (inclusive ranges):
 //   ratelimit 8976–9025 · regression 9026 · smoke 9027–9060 · files 9200–9299
-//   mediadir 9300–9399 · backup 9400–9449 · browser 9500–9549 · config 9550–9589
+//   mediadir 9300–9399 · backup 9400–9449 · browser 9500–9549 · config 9550–9589 · daemon 9590–9629
 export const PORT_RANGES = {
   ratelimit: [8976, 9025],
   regression: [9026, 9026],
@@ -19,6 +19,7 @@ export const PORT_RANGES = {
   backup: [9400, 9449],
   browser: [9500, 9549],
   config: [9550, 9589],
+  daemon: [9590, 9629],
 };
 
 const usedInProcess = new Set();

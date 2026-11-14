@@ -14,7 +14,7 @@
     --r: 14px; --r-sm: 10px;
   }
   body {
-    width: 316px; margin: 0;
+    width: 328px; margin: 0;
     background-color: var(--bg);
     background-image:
       radial-gradient(ellipse 90% 55% at 15% -10%, rgba(10, 132, 255, 0.22), transparent 65%),
@@ -28,7 +28,7 @@
 
   /* header */
   header {
-    padding: 12px 14px; font-weight: 700; font-size: 13.5px;
+    padding: 11px 14px; font-weight: 700; font-size: 13.5px;
     border-bottom: 1px solid var(--border);
     display: flex; justify-content: space-between; align-items: center;
     background: rgba(14, 19, 34, 0.78);
@@ -38,9 +38,52 @@
   header span { display: flex; align-items: center; gap: 7px; }
   header img { border-radius: 4px; }
 
+  /* quick-send two-way dock */
+  .qsend {
+    margin: 10px 12px 2px; padding: 9px;
+    border-radius: 14px;
+    background: rgba(16, 22, 40, 0.68);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .qsend-bar { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .qbtn {
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 999px;
+    padding: 6px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    transition: color .15s, border-color .15s, background .15s, transform .08s;
+  }
+  .qbtn:hover:not(:disabled) { border-color: rgba(100, 210, 255, 0.45); background: rgba(10, 132, 255, 0.16); }
+  .qbtn:disabled { opacity: 0.55; cursor: wait; }
+  .qbtn .ic { color: #7dd3fc; width: 12px; height: 12px; }
+  .qsend-compose { display: flex; align-items: flex-end; gap: 6px; }
+  #quick-text {
+    flex: 1; min-width: 0; resize: none; min-height: 32px; max-height: 76px;
+    background: rgba(6, 9, 19, 0.68); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 10px; padding: 6px 9px;
+    font: inherit; font-size: 12px; line-height: 1.38; outline: none;
+    user-select: text; -webkit-user-select: text;
+    transition: border-color .15s, background .15s;
+  }
+  #quick-text:focus { border-color: rgba(100, 210, 255, 0.5); background: rgba(6, 9, 19, 0.84); }
+  #quick-text::placeholder { color: var(--faint); }
+  #quick-send-btn {
+    flex: none; width: 34px; height: 32px; border-radius: 10px;
+    border: 1px solid rgba(48, 209, 88, 0.4);
+    background: rgba(48, 209, 88, 0.16); color: var(--accent);
+    display: grid; place-items: center; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    transition: border-color .15s, background .15s, transform .08s;
+  }
+  #quick-send-btn:hover:not(:disabled) { border-color: rgba(48, 209, 88, 0.72); background: rgba(48, 209, 88, 0.28); }
+  #quick-send-btn:disabled { opacity: 0.5; cursor: wait; }
+
   /* segmented pill tabs */
   .tabs {
-    display: flex; gap: 4px; margin: 10px 12px 2px; padding: 3px;
+    display: flex; gap: 4px; margin: 8px 12px 2px; padding: 3px;
     border-radius: 999px; background: rgba(10, 14, 26, 0.68);
     border: 1px solid var(--border);
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45);
@@ -58,7 +101,7 @@
   }
 
   /* list */
-  .list { max-height: 320px; overflow-y: auto; padding: 8px 12px; scrollbar-gutter: stable; }
+  .list { max-height: 270px; overflow-y: auto; padding: 8px 12px; scrollbar-gutter: stable; }
   .list::-webkit-scrollbar { width: 5px; }
   .list::-webkit-scrollbar-track { background: transparent; }
   .list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 3px; }
@@ -85,15 +128,14 @@
   .titem:hover { border-color: var(--border-strong); background: var(--panel-2); }
   .titem .when { color: var(--muted); font-size: 10.5px; margin-top: 4px; }
 
-  /* the error detail here is the one thing a user needs to select + copy (to
-     paste a failure into a bug report) — `* { user-select: none }` used to
-     block that even though popup.js exempts .empty from its selectstart guard */
+  /* error detail stays selectable for troubleshooting */
   .empty {
-    color: var(--muted); text-align: center; padding: 24px 10px; line-height: 1.6;
+    color: var(--muted); text-align: center; padding: 20px 10px; line-height: 1.55;
     display: flex; flex-direction: column; align-items: center; gap: 4px;
     user-select: text; -webkit-user-select: text;
   }
   .empty span { user-select: text; -webkit-user-select: text; }
+  .err-detail { font-size: 10.5px; color: var(--faint); word-break: break-word; }
 
   .status {
     padding: 8px 14px 6px; color: var(--accent); font-size: 12px; font-weight: 600;
@@ -103,8 +145,6 @@
   .status.err { color: var(--danger); }
 
   .hint { padding: 4px 14px 12px; color: var(--faint); font-size: 11px; line-height: 1.45; }
-  /* per-site notices (undelivered captures / paste fallback) — a row of its own,
-     so an async check can never overwrite the action status line */
   .notice { margin: 0 14px 6px; color: var(--warn); font-size: 10.5px; line-height: 1.5; }
   .notice.hidden { display: none; }
 
@@ -159,7 +199,7 @@
     flex: 1; background: rgba(6, 9, 19, 0.7); border: 1px solid var(--border); color: var(--fg);
     border-radius: 999px; font-size: 11px; padding: 5px 10px; outline: none; min-width: 0;
     transition: border-color .15s;
-    user-select: text; -webkit-user-select: text; /* the port value must be selectable */
+    user-select: text; -webkit-user-select: text;
   }
   .port-row input:focus { border-color: rgba(100, 210, 255, 0.5); }
   .port-row input::placeholder { color: var(--faint); }
@@ -176,6 +216,9 @@
   .ic-sync { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>'); }
   .ic-eye { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'); }
   .ic-eye-off { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.79 13.79 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.5 13.5 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><path d="m2 2 20 20"/></svg>'); }
+  .ic-link { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'); }
+  .ic-shot { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>'); }
+  .ic-send { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>'); }
 
   /* copy confirmation flash */
   .item.copied, .titem.copied { border-color: var(--accent); background: var(--accent-soft); }
@@ -185,7 +228,7 @@
 
   /* ---------- UX polish ---------- */
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .tab:active, #sync:active, .unhide:active, .port-row button:active { transform: scale(.97); }
+  .tab:active, #sync:active, .unhide:active, .port-row button:active, .qbtn:active, #quick-send-btn:active { transform: scale(.97); }
   .item:active, .titem:active { transform: translateY(1px); }
   .item:focus-visible, .titem:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--border-strong); }
   #sync[aria-busy='true'] .ic-sync { animation: ppspin .8s linear infinite; }
@@ -197,6 +240,16 @@
 </head>
 <body>
   <header><span><img src="icon.png" width="14" height="14" alt=""> ProofPipe</span> <button id="sync" title="Reload from the ProofPipe server" aria-label="Reload from the ProofPipe server"><i class="ic ic-sync" aria-hidden="true"></i> Sync now</button></header>
+  <section class="qsend" aria-label="Quick send to phone">
+    <div class="qsend-bar">
+      <button id="send-tab-link" class="qbtn" title="Send the active tab URL to your phone" aria-label="Send active tab link to phone"><i class="ic ic-link" aria-hidden="true"></i> Tab Link</button>
+      <button id="send-tab-shot" class="qbtn" title="Capture visible tab screenshot and send to phone & workbench" aria-label="Capture visible tab screenshot"><i class="ic ic-shot" aria-hidden="true"></i> Screenshot</button>
+    </div>
+    <div class="qsend-compose">
+      <textarea id="quick-text" rows="1" placeholder="Send note or URL to phone…" aria-label="Send note or URL to phone"></textarea>
+      <button id="quick-send-btn" title="Send note to phone (Enter)" aria-label="Send note to phone"><i class="ic ic-send" aria-hidden="true"></i></button>
+    </div>
+  </section>
   <div class="tabs" role="tablist" aria-label="ProofPipe panels">
     <button id="tab-caps" class="tab active" role="tab" aria-selected="true" aria-controls="list">Captures</button>
     <button id="tab-texts" class="tab" role="tab" aria-selected="false" aria-controls="list">Texts from phone</button>

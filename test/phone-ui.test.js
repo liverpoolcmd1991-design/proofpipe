@@ -793,3 +793,12 @@ test('phone: a file send reports progress in the status strip, not in a hidden b
   assert.match(blocksFor('.status-strip[data-state="busy"]'), /background:\s*var\(--tint-busy\)/);
   assert.match(js, /transferBegin\('photos', jobs\.length\)/);
 });
+
+test('phone: photo uploads report real byte-level XHR progress', { skip: skipOpt }, () => {
+  const uploadFn = js.slice(js.indexOf('async function upload(blob, opts = {})'), js.indexOf('// ---------- outbox'));
+  assert.match(uploadFn, /new XMLHttpRequest\(\)/);
+  assert.match(uploadFn, /xhr\.upload\.onprogress = e =>/);
+  assert.match(uploadFn, /opts\.onProgress\(Math\.round\(\(e\.loaded \/ e\.total\) \* 100\)\)/);
+  assert.ok(!/transferProgress\(tid,\s*-1\)/.test(js), 'no indeterminate -1 progress calls remain');
+});
+

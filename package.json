@@ -17,9 +17,9 @@
     "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
-    "@fastify/compress": "^9.2.0",
-    "@fastify/multipart": "^9.0.1",
-    "@fastify/static": "^10.1.3",
+    "@fastify/compress": "^9.3.0",
+    "@fastify/multipart": "^10.1.8",
+    "@fastify/static": "^10.1.10",
     "fastify": "^5.2.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.4"

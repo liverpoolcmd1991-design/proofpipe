@@ -2,6 +2,28 @@
 // Keep this array ordered newest-first with `v<package.json version>` at index 0.
 const PP_RELEASES = [
   {
+    version: 'v1.27.0',
+    date: '2026-11',
+    headline: 'Liquid Glass Radial Background Warp, Caustic Lighting & Tactile Button Animations',
+    changes: [
+      {
+        scope: 'server',
+        title: 'Desktop Radial Background Warp Mesh, Caustic Lighting, Water Ripples & Micro-Interactions',
+        detail: 'Added an optical radial background displacement mesh & caustic pool (#pp-bg-warp) that warps and ripples the backdrop around the cursor and on clicks while keeping the native pointer clean, illuminates interactive cards and buttons via cached-rect --lgx/--lgy caustic highlights, spawns water-droplet click ripples (.pp-ripple), and adds playful tactile animations for copy confirmation, plane-launch text sending, lightbox rotation, capture card sheen sweeps, and notification shimmer.',
+      },
+      {
+        scope: 'phone',
+        title: 'Phone PWA Touch Background Warp, Water Ripples, Tactile Icon Feedback & Notification Sheen',
+        detail: 'Added an interactive radial background warp & wave canvas (.pp-bg-warp) behind the glass cards, coordinate-accurate water-droplet tap ripples (.pp-phone-ripple) across controls and chips, send plane-launch motion, 90-degree rotate button spin, copy confirmation pop pulses, and notification glass sheen sweeps with full prefers-reduced-motion support.',
+      },
+      {
+        scope: 'extension',
+        title: 'Popup & Floating Tray Background Warp, Caustic Lighting, Click Ripples & Icon Spring Physics',
+        detail: 'Added an optical radial background warp canvas (#pp-ext-warp) to the extension popup, cached-rect caustic highlights across the popup and Shadow-DOM tray panel, coordinate water click ripples, send plane-launch animations, sync/reload spin pulses, and copied item confirmation pops without affecting tile drag-and-drop.',
+      },
+    ],
+  },
+  {
     version: 'v1.26.0',
     date: '2026-11',
     headline: 'Full-Stack Performance & Memory Optimization Sweep',

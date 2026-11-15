@@ -449,9 +449,29 @@ function syncRangeFill(rangeEl) {
   rangeEl.style.setProperty('--range-pct', `${pct}%`);
 }
 
-async function copyText(str) {
+function pulseCopiedFeedback(el, label = 'Copied ✓') {
+  if (!el) return;
+  el.classList.remove('is-copied');
+  void el.offsetWidth;
+  el.classList.add('is-copied');
+  clearTimeout(el._copiedTimer);
+  if (el.matches?.('.cap-copy-btn, #lb-copy') && !el.dataset.origHtml) {
+    el.dataset.origHtml = el.innerHTML;
+    el.innerHTML = `<i class="ic ic-copy" aria-hidden="true"></i> ${label}`;
+  }
+  el._copiedTimer = setTimeout(() => {
+    el.classList.remove('is-copied');
+    if (el.dataset.origHtml) {
+      el.innerHTML = el.dataset.origHtml;
+      delete el.dataset.origHtml;
+    }
+  }, 1100);
+}
+
+async function copyText(str, sourceEl = null) {
   try {
     await navigator.clipboard.writeText(str);
+    pulseCopiedFeedback(sourceEl);
     showToast('Copied to clipboard');
   } catch {
     showToast('Clipboard access blocked');
@@ -499,7 +519,7 @@ function getCapturePng(file) {
   return p;
 }
 
-async function copyCapturePng(file) {
+async function copyCapturePng(file, sourceEl = null) {
   try {
     const pngPromise = getCapturePng(file);
     if (navigator.clipboard && window.ClipboardItem) {
@@ -509,6 +529,7 @@ async function copyCapturePng(file) {
         if (!(e instanceof TypeError)) throw e;
         await navigator.clipboard.write([new ClipboardItem({ 'image/png': await pngPromise })]);
       }
+      pulseCopiedFeedback(sourceEl);
       showToast('Copied PNG to clipboard');
     } else {
       showToast('Clipboard API unavailable');
@@ -773,7 +794,7 @@ function buildCaptureTile(cap) {
   copyBtn.className = 'btn primary-tinted cap-copy-btn';
   copyBtn.title = 'Copy PNG to clipboard';
   copyBtn.innerHTML = '<i class="ic ic-copy"></i> Copy';
-  copyBtn.onclick = () => copyCapturePng(entry.cap.file);
+  copyBtn.onclick = () => copyCapturePng(entry.cap.file, copyBtn);
 
   footer.append(meta, copyBtn);
   tile.append(thumbWrap, footer);
@@ -1012,7 +1033,12 @@ async function rotateLightboxCapture() {
   if (!cap) return;
   const btn = $('#lb-rotate');
   lbRotateBusy = true;
-  if (btn) btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.remove('is-spinning');
+    void btn.offsetWidth;
+    btn.classList.add('is-spinning');
+  }
   try {
     const r = await fetch(`/api/captures/${cap.id}/rotate`, {
       method: 'POST',
@@ -1039,7 +1065,10 @@ async function rotateLightboxCapture() {
     showToast('Could not rotate capture');
   } finally {
     lbRotateBusy = false;
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      setTimeout(() => btn.classList.remove('is-spinning'), 340);
+    }
   }
 }
 
@@ -1253,7 +1282,7 @@ function renderTexts() {
         pill.type = 'button';
         pill.className = 'text-pill';
         pill.title = 'Click to copy to clipboard';
-        pill.onclick = () => copyText(t.body);
+        pill.onclick = () => copyText(t.body, wrap);
 
         const tag = document.createElement('span');
         const fromPhone = t.source === 'phone';
@@ -1295,7 +1324,7 @@ function renderTexts() {
     for (const t of plainTexts) {
       const row = document.createElement('div');
       row.className = 'text-dialog-row';
-      row.onclick = () => copyText(t.body);
+      row.onclick = () => copyText(t.body, row);
 
       const left = document.createElement('div');
       left.className = 'text-dialog-left';
@@ -1617,9 +1646,16 @@ async function uploadPcFile(file) {
 
 async function sendTextFromBar() {
   const input = $('#text-input');
+  const sendBtn = $('#text-send');
   if (!input) return;
   const body = input.value.trim();
   if (!body) return;
+  if (sendBtn) {
+    sendBtn.classList.remove('is-sending');
+    void sendBtn.offsetWidth;
+    sendBtn.classList.add('is-sending');
+    setTimeout(() => sendBtn.classList.remove('is-sending'), 480);
+  }
   input.value = '';
   try {
     const r = await fetch('/api/text', {
@@ -1795,7 +1831,7 @@ function wireEvents() {
   syncRangeFill($('#set-quality-level'));
 
   $('#copy-phone-url')?.addEventListener('click', () => {
-    copyText(resolvedPhoneUrl);
+    copyText(resolvedPhoneUrl, $('#copy-phone-url'));
   });
 
   $('#text-send')?.addEventListener('click', sendTextFromBar);
@@ -1895,6 +1931,11 @@ function wireEvents() {
   });
 
   const openSettingsModal = () => {
+    const sb = $('#top-settings-btn');
+    if (sb) {
+      sb.classList.add('is-activated');
+      setTimeout(() => sb.classList.remove('is-activated'), 380);
+    }
     loadSettings();
     const bd = $('#settings-backdrop');
     if (bd) {
@@ -2259,7 +2300,7 @@ function wireEvents() {
 
   $('#lb-copy')?.addEventListener('click', () => {
     const cap = filteredSortedCaptures()[lightboxIdx];
-    if (cap) copyCapturePng(cap.file);
+    if (cap) copyCapturePng(cap.file, $('#lb-copy'));
   });
   $('#lb-send-phone')?.addEventListener('click', () => {
     const cap = filteredSortedCaptures()[lightboxIdx];
@@ -2367,7 +2408,276 @@ function wireEvents() {
   });
 }
 
+function initLiquidPointerAndRipples() {
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const finePointer = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+
+  const RIPPLE_SEL = '.btn, .toolbtn, .origin-btn, .pair-url-btn, .cap-thumb-wrap, .file-row, .text-pill-wrap, .glass-select-trigger, .glass-select-option, .text-dialog-row, .drop-zone, .filter-btn';
+  const SURFACE_SEL = '.btn, .toolbtn, .origin-btn, .pair-url-btn, .text-pill-wrap, .file-row, .cap-tile, .glass-select-trigger, .glass-select-option, .text-dialog-row, .release-card, .drop-zone, .filter-btn, .workbench-card, .rail-card';
+
+  if (!reducedMotion) {
+    document.addEventListener('pointerdown', e => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      const host = e.target?.closest?.(RIPPLE_SEL);
+      if (!host || host.disabled) return;
+      const rect = host.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const size = Math.max(rect.width, rect.height) * 1.9;
+      const ripple = document.createElement('span');
+      ripple.className = 'pp-ripple';
+      const x = (e.clientX || e.clientY ? e.clientX - rect.left : rect.width / 2) - size / 2;
+      const y = (e.clientX || e.clientY ? e.clientY - rect.top : rect.height / 2) - size / 2;
+      ripple.style.width = `${size.toFixed(0)}px`;
+      ripple.style.height = `${size.toFixed(0)}px`;
+      ripple.style.left = `${x.toFixed(1)}px`;
+      ripple.style.top = `${y.toFixed(1)}px`;
+      host.appendChild(ripple);
+      const cleanup = () => ripple.remove();
+      ripple.addEventListener('animationend', cleanup, { once: true });
+      setTimeout(cleanup, 600);
+    }, { passive: true });
+  }
+
+  const canvas = $('#pp-bg-warp');
+  const ctx = canvas?.getContext?.('2d');
+  if (!canvas || !ctx || reducedMotion) return;
+
+  let w = 0, h = 0, dpr = 1;
+  let targetX = -999, targetY = -999;
+  let curX = -999, curY = -999;
+  let pointerStrength = 0, targetStrength = 0;
+  let rafId = 0;
+  const ripples = [];
+
+  // Cached rect map for hovered surface caustic sheen (zero per-move layout thrashing)
+  let surfaceRects = new WeakMap();
+  let activeSurface = null;
+  let activeCard = null;
+  let pendingClientX = 0;
+  let pendingClientY = 0;
+  let needsSurfaceUpdate = false;
+
+  const invalidateRects = () => { surfaceRects = new WeakMap(); };
+  const applyLocalCoords = (el, x, y) => {
+    if (!el) return;
+    let r = surfaceRects.get(el);
+    if (!r) {
+      r = el.getBoundingClientRect();
+      surfaceRects.set(el, r);
+    }
+    el.style.setProperty('--lgx', `${(x - r.left).toFixed(1)}px`);
+    el.style.setProperty('--lgy', `${(y - r.top).toFixed(1)}px`);
+  };
+  const setActiveSurface = (nextEl, nextCard) => {
+    if (activeSurface && activeSurface !== nextEl) delete activeSurface.dataset.lg;
+    if (activeCard && activeCard !== nextCard) delete activeCard.dataset.lg;
+    activeSurface = nextEl;
+    activeCard = nextCard;
+    if (activeSurface) activeSurface.dataset.lg = 'on';
+    if (activeCard) activeCard.dataset.lg = 'on';
+  };
+
+  const resizeCanvas = () => {
+    w = window.innerWidth;
+    h = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.max(1, Math.round(w * dpr));
+    canvas.height = Math.max(1, Math.round(h * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    invalidateRects();
+    drawFrame(performance.now());
+  };
+
+  const drawFrame = now => {
+    ctx.clearRect(0, 0, w, h);
+
+    // Prune expired ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      if (now - ripples[i].t0 > 950) ripples.splice(i, 1);
+    }
+
+    // 1) Warped ambient water-light caustics that bend toward the cursor
+    if (pointerStrength > 0.01) {
+      const rx = 310;
+      const g = ctx.createRadialGradient(curX, curY, 0, curX, curY, rx);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.12 * pointerStrength).toFixed(4)})`);
+      g.addColorStop(0.45, `rgba(10, 132, 255, ${(0.065 * pointerStrength).toFixed(4)})`);
+      g.addColorStop(0.75, `rgba(48, 209, 88, ${(0.025 * pointerStrength).toFixed(4)})`);
+      g.addColorStop(1, 'rgba(10, 132, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.max(0, curX - rx), Math.max(0, curY - rx), rx * 2, rx * 2);
+    }
+
+    // 2) Optical displacement mesh across the background: grid bends/bulges radially around cursor + ripples
+    const STEP = 44;
+    const cols = Math.ceil(w / STEP) + 2;
+    const rows = Math.ceil(h / STEP) + 2;
+    const warpR2 = 210 * 210;
+    const activeRipples = ripples.map(rp => {
+      const age = (now - rp.t0) / 950;
+      return { x: rp.x, y: rp.y, radius: age * 360, decay: (1 - age) * (1 - age) };
+    });
+
+    const displace = (gx, gy) => {
+      let ox = 0, oy = 0, glow = 0;
+      if (pointerStrength > 0.01) {
+        const dx = gx - curX;
+        const dy = gy - curY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < warpR2 && d2 > 0.01) {
+          const dist = Math.sqrt(d2);
+          const falloff = Math.exp(-d2 / (105 * 105));
+          const push = 26 * pointerStrength * falloff * (1 - Math.exp(-dist / 32));
+          ox += (dx / dist) * push;
+          oy += (dy / dist) * push;
+          glow = falloff * pointerStrength;
+        }
+      }
+      for (let i = 0; i < activeRipples.length; i++) {
+        const rp = activeRipples[i];
+        const dx = gx - rp.x;
+        const dy = gy - rp.y;
+        const dist = Math.hypot(dx, dy);
+        const band = dist - rp.radius;
+        if (Math.abs(band) < 95 && dist > 1) {
+          const wave = Math.cos((band / 95) * Math.PI * 0.5);
+          const amp = 16 * rp.decay * wave * Math.sin(band * 0.08);
+          ox += (dx / dist) * amp;
+          oy += (dy / dist) * amp;
+          glow = Math.max(glow, rp.decay * wave * 0.85);
+        }
+      }
+      return [gx + ox, gy + oy, glow];
+    };
+
+    const pts = new Array(rows * cols);
+    for (let r = 0; r < rows; r++) {
+      const gy = (r - 0.5) * STEP;
+      for (let c = 0; c < cols; c++) {
+        pts[r * cols + c] = displace((c - 0.5) * STEP, gy);
+      }
+    }
+
+    // Draw subtle baseline mesh + locally brightened warp lines near pointer/ripples
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(130, 195, 255, 0.055)';
+    ctx.beginPath();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const p = pts[r * cols + c];
+        if (c === 0) ctx.moveTo(p[0], p[1]);
+        else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        const p = pts[r * cols + c];
+        if (r === 0) ctx.moveTo(p[0], p[1]);
+        else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    ctx.stroke();
+
+    // Highlighted warped filaments only in active displacement zone
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const p0 = pts[r * cols + c];
+        const pR = pts[r * cols + c + 1];
+        const pD = pts[(r + 1) * cols + c];
+        const gMax = Math.max(p0[2], pR[2], pD[2]);
+        if (gMax < 0.04) continue;
+        ctx.strokeStyle = `rgba(130, 224, 255, ${(gMax * 0.34).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(pR[0], pR[1]);
+        ctx.moveTo(p0[0], p0[1]);
+        ctx.lineTo(pD[0], pD[1]);
+        ctx.stroke();
+      }
+    }
+  };
+
+  const tick = now => {
+    rafId = 0;
+    const dx = targetX - curX;
+    const dy = targetY - curY;
+    const ds = targetStrength - pointerStrength;
+    curX += dx * 0.24;
+    curY += dy * 0.24;
+    pointerStrength += ds * 0.16;
+
+    if (needsSurfaceUpdate) {
+      needsSurfaceUpdate = false;
+      if (activeSurface) applyLocalCoords(activeSurface, pendingClientX, pendingClientY);
+      if (activeCard && activeCard !== activeSurface) applyLocalCoords(activeCard, pendingClientX, pendingClientY);
+    }
+
+    drawFrame(now);
+
+    const active = Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length > 0;
+    if (active) rafId = requestAnimationFrame(tick);
+  };
+
+  const scheduleTick = () => {
+    if (!rafId) rafId = requestAnimationFrame(tick);
+  };
+
+  window.addEventListener('scroll', invalidateRects, { passive: true, capture: true });
+  window.addEventListener('resize', resizeCanvas, { passive: true });
+  resizeCanvas();
+
+  if (finePointer) {
+    document.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') {
+        targetStrength = 0;
+        scheduleTick();
+        return;
+      }
+      targetX = e.clientX;
+      targetY = e.clientY;
+      pendingClientX = e.clientX;
+      pendingClientY = e.clientY;
+      needsSurfaceUpdate = true;
+      if (targetStrength === 0 && pointerStrength < 0.05) {
+        curX = targetX;
+        curY = targetY;
+      }
+      targetStrength = 1;
+
+      const t = e.target;
+      if (t && t.closest) {
+        const nextSurf = t.closest(SURFACE_SEL);
+        const nextCard = t.closest('.workbench-card, .rail-card');
+        if (nextSurf !== activeSurface || nextCard !== activeCard) {
+          setActiveSurface(nextSurf, nextCard);
+        }
+      }
+      scheduleTick();
+    }, { passive: true });
+
+    document.addEventListener('pointerleave', () => {
+      targetStrength = 0;
+      setActiveSurface(null, null);
+      scheduleTick();
+    });
+
+    window.addEventListener('blur', () => {
+      targetStrength = 0;
+      setActiveSurface(null, null);
+      scheduleTick();
+    });
+  }
+
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
+    if (ripples.length > 5) ripples.shift();
+    scheduleTick();
+  }, { passive: true });
+}
+
 wireEvents();
+initLiquidPointerAndRipples();
 renderReleases();
 renderCaptures();
 renderFiles();

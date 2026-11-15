@@ -1247,6 +1247,10 @@
       d.onclick = async () => {
         try {
           await navigator.clipboard.writeText(t.body);
+          d.classList.remove('copied');
+          void d.offsetWidth;
+          d.classList.add('copied');
+          setTimeout(() => d.classList.remove('copied'), 900);
           setStatus(`copied text #${t.id} — Ctrl+V anywhere`);
         } catch { setStatus('copy blocked — select the text on the page instead', true); }
       };
@@ -1285,6 +1289,10 @@
   async function sendText() {
     const body = txtInput.value.trim();
     if (!body) return;
+    txtSend.classList.remove('is-sending');
+    void txtSend.offsetWidth;
+    txtSend.classList.add('is-sending');
+    setTimeout(() => txtSend.classList.remove('is-sending'), 460);
     txtSend.disabled = true;
     try {
       try { await bg({ type: 'sendText', body }); }
@@ -1314,11 +1322,66 @@
   // also aborts Chrome's drag initiation on draggable elements (v0.3.5 bug).
   // Text selection is already impossible via user-select:none CSS, and cell
   // dragstart is never canceled, so the selection fallback can't happen.
-  refreshBtn.addEventListener('click', load);
+  const pulseSpin = btn => {
+    btn.classList.remove('is-spinning');
+    void btn.offsetWidth;
+    btn.classList.add('is-spinning');
+    setTimeout(() => btn.classList.remove('is-spinning'), 440);
+  };
+  refreshBtn.addEventListener('click', () => { pulseSpin(refreshBtn); load(); });
   syncBtn.addEventListener('click', () => {
+    pulseSpin(syncBtn);
     goodHostReset();              // let the worker re-probe both hosts
     load();
   });
+
+  // Shadow-DOM liquid pointer caustic highlight + water click ripples (cached panel rect)
+  if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+    let panelRect = null;
+    let panelRaf = 0;
+    let px = 0, py = 0;
+    const invalidatePanelRect = () => { panelRect = null; };
+    window.addEventListener('resize', invalidatePanelRect, { passive: true });
+    panel.addEventListener('pointerenter', e => {
+      panelRect = panel.getBoundingClientRect();
+      panel.style.setProperty('--tray-ptr-on', '1');
+      px = e.clientX; py = e.clientY;
+    }, { passive: true });
+    panel.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') return;
+      px = e.clientX; py = e.clientY;
+      if (panelRaf) return;
+      panelRaf = requestAnimationFrame(() => {
+        panelRaf = 0;
+        if (!panelRect) panelRect = panel.getBoundingClientRect();
+        panel.style.setProperty('--px', `${(px - panelRect.left).toFixed(1)}px`);
+        panel.style.setProperty('--py', `${(py - panelRect.top).toFixed(1)}px`);
+      });
+    }, { passive: true });
+    panel.addEventListener('pointerleave', () => {
+      panelRect = null;
+      panel.style.setProperty('--tray-ptr-on', '0');
+    });
+    panel.addEventListener('pointerdown', e => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      const hostBtn = e.target?.closest?.('.icon-btn, .txtsend, .txtitem, .recovery-btn');
+      if (!hostBtn || hostBtn.disabled) return;
+      const rect = hostBtn.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const size = Math.max(rect.width, rect.height) * 1.9;
+      const ripple = document.createElement('span');
+      ripple.className = 'pp-tray-ripple';
+      ripple.style.width = `${size.toFixed(0)}px`;
+      ripple.style.height = `${size.toFixed(0)}px`;
+      ripple.style.left = `${((e.clientX ? e.clientX - rect.left : rect.width / 2) - size / 2).toFixed(1)}px`;
+      ripple.style.top = `${((e.clientY ? e.clientY - rect.top : rect.height / 2) - size / 2).toFixed(1)}px`;
+      hostBtn.appendChild(ripple);
+      const cleanup = () => ripple.remove();
+      ripple.addEventListener('animationend', cleanup, { once: true });
+      setTimeout(cleanup, 540);
+    }, { passive: true });
+  }
+
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && open) setOpen(false);
   });

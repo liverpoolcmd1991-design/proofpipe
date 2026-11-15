@@ -1049,5 +1049,101 @@ body.kb-open #text-expand { display:none; }
 .alt-btn, .shutter, .vbtn, .cbtn, .linkbtn, .switch-row, #more-btn,
 #text-expand, #text-send, #viewer-close, #file-sheet-close,
 .text-chip, .media-chip, .file-chip {
-  transition:background-color .15s ease, border-color .15s ease, color .15s ease, transform .12s ease;
+  transition:background-color .15s var(--spring), border-color .15s var(--spring), color .15s var(--spring), transform .14s var(--spring), box-shadow .18s var(--spring);
 }
+
+/* ---------- Liquid Glass Water Ripples, Pointer Orb & Micro-Interactions ---------- */
+.text-chip, .file-chip, #text-mode-btn, #text-send, .text-paste-btn,
+.vtop-btn, .sort-opt, .cbtn, #more-btn, #viewer-close, #outbox-info, #undo-toast-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.pp-phone-ripple {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 4;
+  border: 1px solid rgba(180, 236, 255, 0.68);
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.36) 0%,
+    rgba(100, 210, 255, 0.22) 45%,
+    rgba(10, 132, 255, 0) 76%
+  );
+  transform: scale(0);
+  opacity: 0.85;
+  animation: ppPhoneRipple 0.52s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
+}
+
+@keyframes ppPhoneRipple {
+  0% { transform: scale(0); opacity: 0.85; }
+  70% { opacity: 0.42; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.shutter:active .ic-camera {
+  transform: scale(0.84) rotate(-8deg);
+}
+.shutter .ic-camera {
+  transition: transform 0.24s var(--spring);
+}
+
+#text-send.is-sending .ic-send {
+  animation: ppPhoneSendLaunch 0.46s var(--spring);
+}
+@keyframes ppPhoneSendLaunch {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  38% { transform: translate3d(11px, -6px, 0) scale(0.75); opacity: 0; }
+  45% { transform: translate3d(-10px, 5px, 0) scale(0.75); opacity: 0; }
+  100% { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+
+#viewer-rot.is-spinning .ic-rotate {
+  animation: ppPhoneRotate 0.34s var(--spring);
+}
+@keyframes ppPhoneRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(90deg); }
+}
+
+.text-chip.is-copied,
+.file-chip.is-copied {
+  border-color: rgba(48, 209, 88, 0.72) !important;
+  background: rgba(48, 209, 88, 0.16) !important;
+  animation: ppPhoneChipPop 0.32s var(--spring);
+}
+@keyframes ppPhoneChipPop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.flash::before,
+#undo-toast::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 22%, rgba(255, 255, 255, 0.22) 50%, transparent 78%);
+  transform: translateX(-110%);
+  animation: ppPhoneNotifSheen 0.72s var(--spring) 0.04s 1;
+}
+@keyframes ppPhoneNotifSheen {
+  to { transform: translateX(120%); }
+}
+
+.pp-bg-warp {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+.wrap { position: relative; z-index: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-bg-warp, .pp-phone-ripple { display: none !important; }
+}
+

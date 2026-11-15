@@ -758,6 +758,10 @@ function wireQuickSend() {
   const submitQuickText = async () => {
     const val = input.value.trim();
     if (!val) { setStatus('Type a note or URL to send.', true); input.focus(); return; }
+    sendBtn.classList.remove('is-sending');
+    void sendBtn.offsetWidth;
+    sendBtn.classList.add('is-sending');
+    setTimeout(() => sendBtn.classList.remove('is-sending'), 460);
     sendBtn.disabled = true;
     setStatus('Sending to phone…');
     try {
@@ -824,4 +828,176 @@ function wireQuickSend() {
 }
 wireQuickSend();
 
+function initPopupLiquidEffects() {
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+  const RIPPLE_SEL = '.qbtn, .tab, .item, .titem, #open-workbench, #sync, #quick-send-btn, .unhide, .recovery-btn';
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const host = e.target?.closest?.(RIPPLE_SEL);
+    if (!host || host.disabled) return;
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const size = Math.max(rect.width, rect.height) * 1.9;
+    const ripple = document.createElement('span');
+    ripple.className = 'pp-ext-ripple';
+    const x = (e.clientX || e.clientY ? e.clientX - rect.left : rect.width / 2) - size / 2;
+    const y = (e.clientX || e.clientY ? e.clientY - rect.top : rect.height / 2) - size / 2;
+    ripple.style.width = `${size.toFixed(0)}px`;
+    ripple.style.height = `${size.toFixed(0)}px`;
+    ripple.style.left = `${x.toFixed(1)}px`;
+    ripple.style.top = `${y.toFixed(1)}px`;
+    host.appendChild(ripple);
+    const cleanup = () => ripple.remove();
+    ripple.addEventListener('animationend', cleanup, { once: true });
+    setTimeout(cleanup, 540);
+  }, { passive: true });
+
+  const canvas = $('#pp-ext-warp');
+  const ctx = canvas?.getContext?.('2d');
+  if (!canvas || !ctx) return;
+
+  let w = 0, h = 0, dpr = 1;
+  let tx = -999, ty = -999, cx = -999, cy = -999, str = 0, tStr = 0, raf = 0;
+  const ripples = [];
+  let surfaceRects = new WeakMap();
+  let activeSurf = null, pendingX = 0, pendingY = 0, dirtySurf = false;
+  window.addEventListener('scroll', () => { surfaceRects = new WeakMap(); }, { passive: true, capture: true });
+
+  const drawFrame = now => {
+    ctx.clearRect(0, 0, w, h);
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      if (now - ripples[i].t0 > 800) ripples.splice(i, 1);
+    }
+    if (str > 0.01) {
+      const rx = 160;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.12 * str).toFixed(4)})`);
+      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.05 * str).toFixed(4)})`);
+      g.addColorStop(1, 'rgba(10, 132, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.max(0, cx - rx), Math.max(0, cy - rx), rx * 2, rx * 2);
+    }
+    const STEP = 28;
+    const cols = Math.ceil(w / STEP) + 2;
+    const rows = Math.ceil(h / STEP) + 2;
+    const r2 = 120 * 120;
+    const activeRipples = ripples.map(rp => {
+      const age = (now - rp.t0) / 800;
+      return { x: rp.x, y: rp.y, radius: age * 220, decay: (1 - age) * (1 - age) };
+    });
+    const pts = new Array(rows * cols);
+    for (let r = 0; r < rows; r++) {
+      const gy = (r - 0.5) * STEP;
+      for (let c = 0; c < cols; c++) {
+        const gx = (c - 0.5) * STEP;
+        let ox = 0, oy = 0, glow = 0;
+        if (str > 0.01) {
+          const dx = gx - cx, dy = gy - cy, d2 = dx * dx + dy * dy;
+          if (d2 < r2 && d2 > 0.01) {
+            const dist = Math.sqrt(d2);
+            const f = Math.exp(-d2 / (62 * 62));
+            const p = 15 * str * f * (1 - Math.exp(-dist / 18));
+            ox += (dx / dist) * p; oy += (dy / dist) * p; glow = f * str;
+          }
+        }
+        for (let i = 0; i < activeRipples.length; i++) {
+          const rp = activeRipples[i], dx = gx - rp.x, dy = gy - rp.y, dist = Math.hypot(dx, dy);
+          const band = dist - rp.radius;
+          if (Math.abs(band) < 60 && dist > 1) {
+            const wv = Math.cos((band / 60) * Math.PI * 0.5);
+            const amp = 10 * rp.decay * wv * Math.sin(band * 0.12);
+            ox += (dx / dist) * amp; oy += (dy / dist) * amp; glow = Math.max(glow, rp.decay * wv * 0.8);
+          }
+        }
+        pts[r * cols + c] = [gx + ox, gy + oy, glow];
+      }
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(130, 195, 255, 0.05)';
+    ctx.beginPath();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const p = pts[r * cols + c];
+        if (c === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        const p = pts[r * cols + c];
+        if (r === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    ctx.stroke();
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const p0 = pts[r * cols + c], pR = pts[r * cols + c + 1], pD = pts[(r + 1) * cols + c];
+        const gm = Math.max(p0[2], pR[2], pD[2]);
+        if (gm < 0.04) continue;
+        ctx.strokeStyle = `rgba(130, 224, 255, ${(gm * 0.34).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(pR[0], pR[1]);
+        ctx.moveTo(p0[0], p0[1]); ctx.lineTo(pD[0], pD[1]); ctx.stroke();
+      }
+    }
+  };
+
+  const tick = now => {
+    raf = 0;
+    const dx = tx - cx, dy = ty - cy, ds = tStr - str;
+    cx += dx * 0.28; cy += dy * 0.28; str += ds * 0.18;
+    if (dirtySurf && activeSurf) {
+      dirtySurf = false;
+      let r = surfaceRects.get(activeSurf);
+      if (!r) { r = activeSurf.getBoundingClientRect(); surfaceRects.set(activeSurf, r); }
+      activeSurf.style.setProperty('--lgx', `${(pendingX - r.left).toFixed(1)}px`);
+      activeSurf.style.setProperty('--lgy', `${(pendingY - r.top).toFixed(1)}px`);
+    }
+    drawFrame(now);
+    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length) {
+      raf = requestAnimationFrame(tick);
+    }
+  };
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(tick); };
+  const resize = () => {
+    w = document.documentElement.clientWidth || 328;
+    h = Math.max(document.documentElement.scrollHeight, window.innerHeight || 400);
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFrame(performance.now());
+  };
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+    document.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') { tStr = 0; schedule(); return; }
+      tx = e.clientX; ty = e.clientY;
+      pendingX = e.clientX; pendingY = e.clientY;
+      dirtySurf = true;
+      if (tStr === 0 && str < 0.05) { cx = tx; cy = ty; }
+      tStr = 1;
+      const nextSurf = e.target?.closest?.(RIPPLE_SEL) || null;
+      if (nextSurf !== activeSurf) {
+        if (activeSurf) delete activeSurf.dataset.lg;
+        activeSurf = nextSurf;
+        if (activeSurf) activeSurf.dataset.lg = 'on';
+      }
+      schedule();
+    }, { passive: true });
+
+    document.addEventListener('pointerleave', () => {
+      tStr = 0;
+      if (activeSurf) { delete activeSurf.dataset.lg; activeSurf = null; }
+      schedule();
+    });
+  }
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
+    if (ripples.length > 4) ripples.shift();
+    schedule();
+  }, { passive: true });
+}
+
+initPopupLiquidEffects();
 showTab(activeTab);

@@ -1151,7 +1151,17 @@ async function tapCopyText(text, chip) {
     await navigator.clipboard.writeText(text);
     ok = true;
   } catch { ok = copyTextFallback(text); }
-  if (ok) { flash('Copied ✓ — paste anywhere'); return; }
+  if (ok) {
+    if (chip) {
+      chip.classList.remove('is-copied');
+      void chip.offsetWidth;
+      chip.classList.add('is-copied');
+      clearTimeout(chip._copyTimer);
+      chip._copyTimer = setTimeout(() => chip.classList.remove('is-copied'), 950);
+    }
+    flash('Copied ✓ — paste anywhere');
+    return;
+  }
   chip?.classList.add('chip-manual');
   flash('Copy blocked — long-press the text to select it');
 }
@@ -1561,6 +1571,13 @@ if (textLoadMore) textLoadMore.onclick = () => {
 async function sendText() {
   const body = $('#text-input').value.trim();
   if (!body) return;
+  const sendBtn = $('#text-send');
+  if (sendBtn) {
+    sendBtn.classList.remove('is-sending');
+    void sendBtn.offsetWidth;
+    sendBtn.classList.add('is-sending');
+    setTimeout(() => sendBtn.classList.remove('is-sending'), 480);
+  }
   try {
     const r = await fetch(`${SERVER}/api/text`, {
       method: 'POST',
@@ -2364,5 +2381,166 @@ document.addEventListener('visibilitychange', () => {
   }
   loadSettings();
 });
+
+function initPhoneLiquidEffects() {
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  if (reducedMotion) return;
+
+  const RIPPLE_SEL = '.shutter, .alt-btn, .vbtn, .vtop-btn, .sort-opt, #text-mode-btn, #text-send, .text-paste-btn, #recent .ok-badge, .text-chip, .file-chip, #outbox-info, #undo-toast-btn, #more-btn, .cbtn, #viewer-close';
+
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const host = e.target?.closest?.(RIPPLE_SEL);
+    if (!host || host.disabled) return;
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const size = Math.max(rect.width, rect.height) * 1.9;
+    const ripple = document.createElement('span');
+    ripple.className = 'pp-phone-ripple';
+    const x = (e.clientX || e.clientY ? e.clientX - rect.left : rect.width / 2) - size / 2;
+    const y = (e.clientX || e.clientY ? e.clientY - rect.top : rect.height / 2) - size / 2;
+    ripple.style.width = `${size.toFixed(0)}px`;
+    ripple.style.height = `${size.toFixed(0)}px`;
+    ripple.style.left = `${x.toFixed(1)}px`;
+    ripple.style.top = `${y.toFixed(1)}px`;
+    host.appendChild(ripple);
+    const cleanup = () => ripple.remove();
+    ripple.addEventListener('animationend', cleanup, { once: true });
+    setTimeout(cleanup, 580);
+  }, { passive: true });
+
+  $('#viewer-rot')?.addEventListener('click', () => {
+    const btn = $('#viewer-rot');
+    if (!btn) return;
+    btn.classList.remove('is-spinning');
+    void btn.offsetWidth;
+    btn.classList.add('is-spinning');
+    setTimeout(() => btn.classList.remove('is-spinning'), 360);
+  });
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'pp-bg-warp';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.prepend(canvas);
+  const ctx = canvas.getContext?.('2d');
+  if (!ctx) return;
+
+  let w = 0, h = 0, dpr = 1;
+  let tx = -999, ty = -999, cx = -999, cy = -999, str = 0, tStr = 0, raf = 0;
+  const ripples = [];
+
+  const drawFrame = now => {
+    ctx.clearRect(0, 0, w, h);
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      if (now - ripples[i].t0 > 900) ripples.splice(i, 1);
+    }
+    if (str > 0.01) {
+      const rx = 240;
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.1 * str).toFixed(4)})`);
+      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.045 * str).toFixed(4)})`);
+      g.addColorStop(1, 'rgba(10, 132, 255, 0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(Math.max(0, cx - rx), Math.max(0, cy - rx), rx * 2, rx * 2);
+    }
+    const STEP = 42;
+    const cols = Math.ceil(w / STEP) + 2;
+    const rows = Math.ceil(h / STEP) + 2;
+    const r2 = 170 * 170;
+    const activeRipples = ripples.map(rp => {
+      const age = (now - rp.t0) / 900;
+      return { x: rp.x, y: rp.y, radius: age * 300, decay: (1 - age) * (1 - age) };
+    });
+    const pts = new Array(rows * cols);
+    for (let r = 0; r < rows; r++) {
+      const gy = (r - 0.5) * STEP;
+      for (let c = 0; c < cols; c++) {
+        const gx = (c - 0.5) * STEP;
+        let ox = 0, oy = 0, glow = 0;
+        if (str > 0.01) {
+          const dx = gx - cx, dy = gy - cy, d2 = dx * dx + dy * dy;
+          if (d2 < r2 && d2 > 0.01) {
+            const dist = Math.sqrt(d2);
+            const f = Math.exp(-d2 / (90 * 90));
+            const p = 20 * str * f * (1 - Math.exp(-dist / 28));
+            ox += (dx / dist) * p; oy += (dy / dist) * p; glow = f * str;
+          }
+        }
+        for (let i = 0; i < activeRipples.length; i++) {
+          const rp = activeRipples[i], dx = gx - rp.x, dy = gy - rp.y, dist = Math.hypot(dx, dy);
+          const band = dist - rp.radius;
+          if (Math.abs(band) < 85 && dist > 1) {
+            const wv = Math.cos((band / 85) * Math.PI * 0.5);
+            const amp = 14 * rp.decay * wv * Math.sin(band * 0.09);
+            ox += (dx / dist) * amp; oy += (dy / dist) * amp; glow = Math.max(glow, rp.decay * wv * 0.8);
+          }
+        }
+        pts[r * cols + c] = [gx + ox, gy + oy, glow];
+      }
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(130, 195, 255, 0.045)';
+    ctx.beginPath();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const p = pts[r * cols + c];
+        if (c === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        const p = pts[r * cols + c];
+        if (r === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      }
+    }
+    ctx.stroke();
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const p0 = pts[r * cols + c], pR = pts[r * cols + c + 1], pD = pts[(r + 1) * cols + c];
+        const gm = Math.max(p0[2], pR[2], pD[2]);
+        if (gm < 0.04) continue;
+        ctx.strokeStyle = `rgba(130, 224, 255, ${(gm * 0.32).toFixed(3)})`;
+        ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(pR[0], pR[1]);
+        ctx.moveTo(p0[0], p0[1]); ctx.lineTo(pD[0], pD[1]); ctx.stroke();
+      }
+    }
+  };
+  const tick = now => {
+    raf = 0;
+    const dx = tx - cx, dy = ty - cy, ds = tStr - str;
+    cx += dx * 0.24; cy += dy * 0.24; str += ds * 0.16;
+    drawFrame(now);
+    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length) {
+      raf = requestAnimationFrame(tick);
+    }
+  };
+  const schedule = () => { if (!raf) raf = requestAnimationFrame(tick); };
+  const resize = () => {
+    w = window.innerWidth; h = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawFrame(performance.now());
+  };
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+  if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+    document.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse') { tStr = 0; schedule(); return; }
+      tx = e.clientX; ty = e.clientY;
+      if (tStr === 0 && str < 0.05) { cx = tx; cy = ty; }
+      tStr = 1; schedule();
+    }, { passive: true });
+    document.addEventListener('pointerleave', () => { tStr = 0; schedule(); });
+  }
+  document.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
+    if (ripples.length > 4) ripples.shift();
+    schedule();
+  }, { passive: true });
+}
+
+initPhoneLiquidEffects();
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');

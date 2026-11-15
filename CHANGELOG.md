@@ -2,6 +2,15 @@
 
 All notable changes to ProofPipe are documented in this file.
 
+## [1.27.0] — 2026-11-15
+
+### Added
+- **Liquid Glass Radial Background Warp & Caustic Illumination (`public/index.html`, `public/style.css`, `public/app.js`)**: Added `#pp-bg-warp` — a full-viewport optical displacement lattice & caustic light pool behind the glass surfaces that radially warps around the cursor with smooth rAF inertia (auto-sleeping when idle), emits concentric water waves on clicks, and pairs with cached-rect surface caustic highlights (`--lgx`/`--lgy`) across workbench cards, tiles, and buttons with zero per-frame layout reads.
+- **Tactile Water Click Ripples & Playful Button Micro-Interactions (`public/style.css`, `public/app.js`, `public/phone.css`, `public/phone.js`, `public/sw.js`)**: Added coordinate-accurate expanding water ripples on clicks/taps, `Copied ✓` pop pulses, send plane-launch animation, lightbox rotate spin, Settings gear twist, capture thumbnail specular sweep, notification sheen sweeps (`proofpipe-v39`), and the mobile `.pp-bg-warp` backdrop warp canvas, all gated behind `prefers-reduced-motion: reduce`.
+- **Extension Popup & Tray Background Warp, Caustics & Click Feedback (`extension/popup.html`, `extension/popup.js`, `extension/tray-ui.js`, `extension/content.js`)**: Added `#pp-ext-warp` background optical warp in the toolbar popup, cached-rect caustic hover lighting across the popup and Shadow-DOM floating tray, water click ripples, send launch swoosh, sync/reload spin, and copy confirmation pop without affecting tile drag-and-drop.
+
+---
+
 ## [1.26.0] — 2026-11-15
 
 ### Changed

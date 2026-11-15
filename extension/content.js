@@ -68,202 +68,7 @@
   // port override) — declared up here so every adopter can use it
   const HOST_RE = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 
-  const host = document.createElement('div');
-  host.id = 'proofpipe-tray-host';
-  host.style.cssText = 'all:initial; position:fixed; z-index:2147483647;';
-  document.documentElement.appendChild(host);
-  const root = host.attachShadow({ mode: 'closed' });
-
-  root.innerHTML = `
-    <style>
-      /* the tray is a Liquid Glass island inside a page we do not control:
-         declaring the color scheme keeps its native textarea chrome dark */
-      :host { all: initial; color-scheme: dark; user-select: none; -webkit-user-select: none; }
-      * {
-        box-sizing: border-box;
-        font-family: -apple-system, "SF Pro Text", system-ui, sans-serif;
-        letter-spacing: -0.01em;
-        margin: 0; padding: 0;
-        user-select: none; -webkit-user-select: none;
-        -webkit-font-smoothing: antialiased;
-      }
-      /* The tile's image IS the drag source (see the file header): Blink attaches
-         a dragged <img>'s own bytes to the drag, which is the only shape a drop
-         in the same document can read. auto is the <img> default; declared here
-         because this one property is load-bearing — none on the image silently
-         turns every tray drag into an empty one. */
-      .cell .thumb { -webkit-user-drag: auto; }
-
-      /* --- floating action button (FAB) --- */
-      .fab {
-        width: 38px; height: 38px; border-radius: 50%;
-        background: radial-gradient(circle at 30% 25%, rgba(56, 88, 168, 0.42), rgba(14, 20, 38, 0.88));
-        color: #f5f7ff;
-        border: 1px solid rgba(255, 255, 255, 0.22);
-        -webkit-backdrop-filter: saturate(200%) blur(24px);
-        backdrop-filter: saturate(200%) blur(24px);
-        font-size: 16px; font-weight: 700; cursor: pointer;
-        box-shadow: 0 8px 24px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.28), 0 0 0 0 rgba(10,132,255,0);
-        display: grid; place-items: center; user-select: none;
-        transition: border-color .18s, box-shadow .18s, transform .12s;
-      }
-      .fab:hover {
-        border-color: rgba(100, 210, 255, 0.48);
-        box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.34), 0 0 0 3px rgba(10, 132, 255, .18);
-      }
-      .fab:active { transform: scale(.93); }
-
-      /* --- main Liquid Glass panel --- */
-      .panel {
-        position: fixed; bottom: 64px; right: 14px; width: 296px;
-        background-color: rgba(12, 18, 34, 0.88);
-        background-image:
-          radial-gradient(ellipse 95% 55% at 15% -10%, rgba(10, 132, 255, 0.2), transparent 65%),
-          radial-gradient(ellipse 85% 50% at 88% 105%, rgba(48, 209, 88, 0.14), transparent 65%);
-        -webkit-backdrop-filter: saturate(210%) blur(32px);
-        backdrop-filter: saturate(210%) blur(32px);
-        color: #f5f7ff; border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 18px;
-        box-shadow: 0 20px 54px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.2);
-        padding: 12px; display: none;
-        opacity: 0; transform: translateY(8px) scale(.97); transform-origin: bottom right;
-        transition: opacity .18s ease, transform .18s ease;
-      }
-      .panel.open { display: block; }
-      .panel.open.visible { opacity: 1; transform: translateY(0) scale(1); }
-
-      /* --- header --- */
-      .head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 10px; }
-      .head b { font-size: 13.5px; font-weight: 700; letter-spacing: -.01em; }
-      .head-actions { display: flex; gap: 5px; align-items: center; }
-      .icon-btn {
-        background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.14); color: #98a2b8;
-        border-radius: 999px; font-size: 11px; font-weight: 600; padding: 4px 10px; cursor: pointer;
-        display: inline-flex; align-items: center; gap: 4px; line-height: 1;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-        transition: color .15s, border-color .15s, background .15s, transform .08s;
-      }
-      .icon-btn:hover { color: #f5f7ff; border-color: rgba(255, 255, 255, 0.28); background: rgba(255,255,255,.12); }
-      .icon-btn svg { width: 12px; height: 12px; flex: none; }
-
-      /* --- capture grid --- */
-      .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; max-height: 238px; overflow-y: auto; }
-      .grid::-webkit-scrollbar { width: 5px; }
-      .grid::-webkit-scrollbar-track { background: transparent; }
-      .grid::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 3px; }
-      .grid::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
-
-      .cell {
-        position: relative; border-radius: 10px; overflow: hidden; cursor: grab;
-        border: 1px solid rgba(255, 255, 255, 0.14); background: rgba(24, 32, 54, 0.68);
-        box-shadow: 0 4px 12px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14);
-        -webkit-user-drag: element; user-select: none; -webkit-user-select: none;
-        transition: border-color .15s, box-shadow .15s;
-      }
-      .cell:hover { border-color: rgba(100, 210, 255, 0.45); box-shadow: 0 0 0 2px rgba(10, 132, 255, .2); }
-      .cell:active { cursor: grabbing; }
-      .cell .thumb { width: 100%; height: 72px; object-fit: cover; display: block; transition: transform .2s; }
-      .cell:hover .thumb { transform: scale(1.04); }
-      .cell .id {
-        pointer-events: none;
-        position: absolute; bottom: 4px; left: 4px; font-size: 9px; font-weight: 650; color: #f5f7ff;
-        background: rgba(6, 9, 19, .74); border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 999px; padding: 0 5px; line-height: 14px;
-        -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-      }
-
-      /* --- status & empty --- */
-      .status { font-size: 11px; font-weight: 600; color: #98a2b8; padding: 8px 4px 2px; text-align: center; transition: color .15s; min-height: 16px; }
-      .status.err { color: #ff453a; }
-      .empty {
-        font-size: 12px; color: #98a2b8; text-align: center; padding: 18px 6px; grid-column: 1 / -1; line-height: 1.5;
-        background: rgba(20, 26, 42, 0.45); border: 1px dashed rgba(255, 255, 255, 0.16); border-radius: 12px;
-      }
-
-      /* --- text section --- */
-      .textsec { border-top: 1px solid rgba(255, 255, 255, 0.12); margin-top: 8px; padding-top: 8px; }
-      .txthead { font-size: 11px; color: #98a2b8; padding: 0 4px 6px; display: flex; justify-content: space-between; align-items: center; }
-      .txthead b { color: #f5f7ff; font-weight: 650; }
-      .txtrow { display: flex; gap: 6px; }
-      .txt {
-        flex: 1; min-width: 0; resize: none; height: 34px;
-        background: rgba(6, 9, 19, 0.64); border: 1px solid rgba(255, 255, 255, 0.14); color: #f5f7ff;
-        border-radius: 10px; padding: 6px 9px; font-size: 12px; outline: none;
-        user-select: text; -webkit-user-select: text;
-        transition: border-color .15s, background .15s;
-      }
-      .txt:focus { border-color: rgba(100, 210, 255, 0.5); background: rgba(6, 9, 19, 0.78); }
-      .txt::placeholder { color: #64708a; }
-      .txtsend {
-        flex: none; width: 42px; border: 1px solid rgba(48, 209, 88, 0.35); border-radius: 10px;
-        background: rgba(48, 209, 88, 0.14); color: #30d158; font-size: 12px; cursor: pointer;
-        display: grid; place-items: center;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
-        transition: border-color .15s, background .15s, transform .08s;
-      }
-      .txtsend:hover { border-color: rgba(48, 209, 88, 0.65); background: rgba(48, 209, 88, 0.24); }
-      .txtitem {
-        font-size: 11.5px; color: #f5f7ff; background: rgba(24, 32, 54, 0.64);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-        border-radius: 9px; padding: 5px 9px; margin-top: 5px; cursor: pointer;
-        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; user-select: text; -webkit-user-select: text;
-        transition: border-color .15s, background .15s;
-      }
-      .txtitem:hover { border-color: rgba(255, 255, 255, 0.26); background: rgba(34, 44, 72, 0.72); }
-      .txtnone { font-size: 11px; color: #64708a; padding: 6px 4px 2px; text-align: center; }
-
-      /* ---------- UX polish ---------- */
-      .fab:focus-visible, .icon-btn:focus-visible, .txtsend:focus-visible,
-      .cell:focus-visible, .txtitem:focus-visible, .txt:focus-visible {
-        outline: 2px solid #30d158; outline-offset: 2px;
-      }
-      .icon-btn:active, .txtsend:active { transform: scale(.96); }
-      .cell { outline-offset: 0; }
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after { animation: none !important; transition: none !important; }
-      }
-    </style>
-    <button class="fab" aria-controls="pp-panel" title="ProofPipe captures — click to open. Drag to move · right-click to hide on this site (restore from the popup)." aria-label="Open ProofPipe capture tray"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16"/><circle cx="4" cy="12" r="2.75"/><circle cx="20" cy="12" r="2.75"/></svg></button>
-    <div class="panel" id="pp-panel" role="region" aria-label="ProofPipe captures" tabindex="-1">
-      <div class="head">
-        <b>ProofPipe</b>
-        <div class="head-actions">
-          <button class="icon-btn sync" title="Re-check the ProofPipe server now" aria-label="Re-check the ProofPipe server now">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-            Sync
-          </button>
-          <button class="icon-btn reload" title="Reload captures" aria-label="Reload captures">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
-          </button>
-        </div>
-      </div>
-      <div class="grid"></div>
-      <div class="textsec">
-        <div class="txthead"><b>Text</b><span>type → phone · tap text = copy</span></div>
-        <div class="txtrow">
-          <textarea class="txt" placeholder="type text to send to your phone…"></textarea>
-          <!-- icon + explicit name: the raw arrow glyph this used to carry WAS
-               the button's accessible name — announced verbosely, rendered by
-               whatever font the host page supplies, and it could not follow
-               currentColor. Same reasoning as the harness outbox badge. -->
-          <button class="txtsend" title="Send text to phone" aria-label="Send text to phone"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 12 16-8-5.5 8 5.5 8-16-8Z"/></svg></button>
-        </div>
-        <div class="txtlist"></div>
-      </div>
-      <div class="status" role="status" aria-live="polite"></div>
-    </div>
-  `;
-
-  const fab = root.querySelector('.fab');
-  const panel = root.querySelector('.panel');
-  const grid = root.querySelector('.grid');
-  const status = root.querySelector('.status');
-  const refreshBtn = root.querySelector('.icon-btn.reload');
-  const syncBtn = root.querySelector('.icon-btn.sync');
-  const txtInput = root.querySelector('.txt');
-  const txtSend = root.querySelector('.txtsend');
-  const txtList = root.querySelector('.txtlist');
+  const { host, els: { fab, panel, grid, status, refreshBtn, syncBtn, txtInput, txtSend, txtList, searchInput, targetPill } } = PPTrayUI.mount(document);
 
   // Global hide for the FAB — flagged in chrome.storage.local by the toolbar
   // popup, which owns the control. Per-site hide (right-click the p button)
@@ -341,6 +146,9 @@
   }
 
   let captures = [];
+  let allTexts = [];
+  let trayFilterQuery = '';
+  let lastLoadFailed = false;
   let open = false;
   const thumbs = new Map();   // id -> thumbnail objectURL (display only)
   const blobs = new Map();    // id -> Blob of the stored ORIGINAL (drag source + clipboard copy)
@@ -392,14 +200,7 @@
     }).catch(() => {});
   } catch {}
   function directBases() {
-    const manualPort = manualPortCache; // null until storage answers — fine, discovery copes
-    // protocol-aware default: an https origin on the protocol default is 443,
-    // NOT 80 (Number('') is 0, which would never match a port anyway). This
-    // matches background.js's isPinnedServerUrl so the two contexts agree.
-    const pinnedUrl = new URL(SERVER);
-    const pinnedPort = Number(pinnedUrl.port) || (pinnedUrl.protocol === 'https:' ? 443 : 80);
-    const ports = PPDiscovery.candidatePorts({ manualPort, pinnedPort });
-    return [...new Set([SERVER, ...PPDiscovery.candidateHosts(ports).filter(h => h.startsWith('http:'))])];
+    return PPDiscovery.originList({ pinned: SERVER, manualPort: manualPortCache, httpOnly: true });
   }
 
   // ONE adopter for every successful direct fetch: the loopback origin that just
@@ -411,48 +212,31 @@
     if (base !== SERVER && HOST_RE.test(base)) SERVER = base;
   }
 
-  // Every direct fetch is BOUNDED — without a timeout a half-open LAN
-  // connection left the tray stale forever with no error path (discovery probes
-  // had one, data fetches never learned it). JSON budgets are tight; media gets
-  // the room a multi-MB photo legitimately needs.
   const JSON_TIMEOUT_MS = 4000;
   const MEDIA_TIMEOUT_MS = 15000;
   async function fetchCaptures() {
     try { return await bg({ type: 'captures' }); } catch {}
-    for (const base of directBases()) {
-      try {
-        const r = await fetch(`${base}/api/captures`, { signal: AbortSignal.timeout(JSON_TIMEOUT_MS) });
-        if (r.ok) { adoptServer(base); return await r.json(); }
-      } catch {}
+    const hit = await PPDiscovery.fetchFirst(directBases(), '/api/captures', undefined, JSON_TIMEOUT_MS);
+    if (hit) {
+      const { base, response } = hit;
+      adoptServer(base);
+      return await response.json();
     }
     throw new Error('unreachable via background worker and direct fetch');
   }
 
-  // Tiny fingerprint for the poll: `${count}:${latestId}` (a delete of an OLD
-  // capture changes the count, a new capture changes both). Same pre-check the
-  // harness and the phone's loadRecent use — the 3s poll used to pull the full
-  // 100-row list every tick just to discover nothing had changed.
   async function fetchCapturesVersion() {
     try { return await bg({ type: 'capturesVersion' }); } catch {}
-    for (const base of directBases()) {
-      try {
-        const r = await fetch(`${base}/api/captures/version`, { signal: AbortSignal.timeout(JSON_TIMEOUT_MS) });
-        if (r.ok) { adoptServer(base); return await r.json(); }
-      } catch {}
+    const hit = await PPDiscovery.fetchFirst(directBases(), '/api/captures/version', undefined, JSON_TIMEOUT_MS);
+    if (hit) {
+      const { base, response } = hit;
+      adoptServer(base);
+      return await response.json();
     }
     return null;
   }
 
-  // server filename guard — shared module (extension/files.js, loaded before
-  // this script). It used to be a private copy that had to stay in lockstep
-  // with background.js's and popup.js's; a drift there is security-relevant.
   const safeFile = PPFiles.safe;
-  // SW blob relay first: the background worker's fetches carry
-  // host_permissions and are immune to page-level Local-Network-Access
-  // blocks that kill the direct fetch on public https sites (the main
-  // auto-paste failure mode — page unfocused means the clipboard fallback
-  // dies too, so the media fetch MUST succeed here). The Blob travels over
-  // the message channel as-is — no base64 inflation.
   async function fetchMediaSW(file) {
     const r = await bg({ type: 'mediaBlob', file });
     if (r && r.blob instanceof Blob) return r.blob;
@@ -461,22 +245,12 @@
   async function fetchMedia(file, { preferSW = false } = {}) {
     if (preferSW) {
       try { return await fetchMediaSW(file); } catch {}
-      // SW busy/restarting — one direct attempt before giving up
     }
-    // direct fetch first for the tray/drag UX: fastest path (no SW wake).
-    // Cost: one Local-Network-Access prompt per site at most (README).
-    for (const base of directBases()) {
-      try {
-        const r = await fetch(`${base}/media/${safeFile(file)}`, { signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) });
-        if (r.ok) {
-          // Adopt whatever origin just served media to THIS page — the drag's
-          // DownloadURL is fetched by Chrome itself, so a pinned SERVER that is
-          // stale for this page (wrong port, or http/https mismatch) makes that
-          // fetch fail silently. Same allowlist as every other adoption.
-          adoptServer(base);
-          return await r.blob();
-        }
-      } catch {}
+    const hit = await PPDiscovery.fetchFirst(directBases(), `/media/${safeFile(file)}`, undefined, MEDIA_TIMEOUT_MS);
+    if (hit) {
+      const { base, response } = hit;
+      adoptServer(base);
+      return await response.blob();
     }
     if (!preferSW) {
       try { return await fetchMediaSW(file); } catch {}
@@ -484,13 +258,9 @@
     throw new Error('media unreachable');
   }
 
-  // Server rows carry "YYYY-MM-DD HH:MM:SS" in UTC. The tray showed no time at
-  // all, so two captures with the same #-less thumbnail were indistinguishable;
-  // every other surface renders the viewer's local clock.
   function localTime(sql) {
-    if (!sql) return '';
-    const d = new Date(String(sql).replace(' ', 'T') + 'Z');
-    return isNaN(d) ? '' : d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    const d = PPDiscovery.parseUtcDate(sql);
+    return d ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : '';
   }
 
   function setStatus(text, isErr = false) {
@@ -630,10 +400,12 @@
   // changed. Reusing the node keeps its decoded thumbnail, listeners and place.
   const cellById = new Map(); // capture id -> live cell
   function buildCell(c) {
-    const cell = document.createElement('div');
+      const cell = document.createElement('div');
       cell.className = 'cell';
+      cell.dataset.file = c.file;
       const when = localTime(c.created_at);
-      cell.title = `#${c.id}${when ? ` · ${when}` : ''} — drag it or press Ctrl+Enter into the chat box, or click to copy`;
+      const isPc = c.origin === 'pc';
+      cell.title = `#${c.id} · ${isPc ? 'PC' : 'Phone'}${when ? ` · ${when}` : ''} — drag it or press Ctrl+Enter into the chat box, or click to copy`;
       const img = document.createElement('img');
       img.className = 'thumb';
       img.alt = `#${c.id}`;
@@ -652,10 +424,23 @@
           }
         });
       }
+      const origin = document.createElement('span');
+      origin.className = `cell-origin ${isPc ? 'pc' : 'phone'}`;
+      origin.textContent = isPc ? 'PC' : 'Phone';
+      const pasteBtn = document.createElement('button');
+      pasteBtn.type = 'button';
+      pasteBtn.className = 'cell-paste';
+      pasteBtn.textContent = 'Paste';
+      pasteBtn.draggable = false;
+      pasteBtn.title = `Paste capture #${c.id} into active chat`;
+      pasteBtn.setAttribute('aria-label', `Paste capture #${c.id} into chat`);
+      pasteBtn.addEventListener('mousedown', e => { e.stopPropagation(); });
+      pasteBtn.addEventListener('dragstart', e => { e.preventDefault(); e.stopPropagation(); });
+      pasteBtn.addEventListener('click', e => { e.stopPropagation(); pasteIntoTarget(c); });
       const id = document.createElement('span');
       id.className = 'id';
       id.textContent = `#${c.id}`;
-      cell.append(img, id);
+      cell.append(img, origin, pasteBtn, id);
       // the tile is draggable too, so a drag that starts on the 1px border (the
       // only part of the cell the image does not cover) still starts a drag at
       // all; the image above is the source that actually carries bytes
@@ -665,6 +450,7 @@
       cell.setAttribute('role', 'button');
       cell.setAttribute('aria-label', `Capture #${c.id}${when ? ` at ${when}` : ''} — press Enter to copy, Ctrl+Enter to paste it into the chat, or drag it`);
       cell.addEventListener('keydown', e => {
+        if (e.target.closest && e.target.closest('.cell-paste')) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           // Ctrl/⌘+Enter = the drag, from the keyboard: straight into the page's
@@ -689,7 +475,7 @@
       // reported at dragend — see the tripwire there
       let payloadWasOriginal = false;
       cell.addEventListener('mousedown', e => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || (e.target.closest && e.target.closest('.cell-paste'))) return;
         downXY = [e.clientX, e.clientY];
         upgradeTile(c, img); // the pointer can land on a tile it never "entered"
         // NOTE: no preventDefault here — canceling mousedown's default action
@@ -759,35 +545,88 @@
       });
       // click still fires after a drag on some sites; only copy on a true click
       cell.addEventListener('click', e => {
+        if (e.target.closest && e.target.closest('.cell-paste')) return;
         if (downXY && (Math.abs(e.clientX - downXY[0]) > 6 || Math.abs(e.clientY - downXY[1]) > 6)) return; // was a drag
         copyOriginal(c);
       });
     return cell;
   }
+  function dropCell(id, cell) {
+    if (thumbObserver) thumbObserver.unobserve(cell);
+    thumbTargets.delete(cell);
+    cell.remove();
+    cellById.delete(id);
+  }
+  function renderTrayReachError() {
+    if (captures.length) return;
+    for (const [id, cell] of cellById) dropCell(id, cell);
+    grid.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'empty empty-err';
+    const msg = document.createElement('div');
+    msg.textContent = 'ProofPipe server not reachable. Start ProofPipe, or retry discovery below.';
+    const actions = document.createElement('div');
+    actions.className = 'recovery-actions';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'recovery-btn recovery-retry';
+    retryBtn.textContent = 'Retry Sync';
+    retryBtn.onclick = () => { goodHostReset(); load(); loadTexts(); };
+    const wbBtn = document.createElement('button');
+    wbBtn.type = 'button';
+    wbBtn.className = 'recovery-btn recovery-workbench';
+    wbBtn.textContent = 'Open Workbench';
+    wbBtn.onclick = () => { bg({ type: 'openWorkbench', url: SERVER }).catch(() => {}); };
+    actions.append(retryBtn, wbBtn);
+    empty.append(msg, actions);
+    grid.appendChild(empty);
+  }
   function render() {
     if (!captures.length) {
-      for (const [id, cell] of cellById) {
-        if (thumbObserver) thumbObserver.unobserve(cell);
-        thumbTargets.delete(cell);
-        cell.remove();
-        cellById.delete(id);
+      for (const [id, cell] of cellById) dropCell(id, cell);
+      if (lastLoadFailed) { renderTrayReachError(); return; }
+      if (!grid.querySelector('.empty') || grid.querySelector('.empty-err')) {
+        grid.innerHTML = '<div class="empty">No captures yet.<br>Snap one with the phone app.</div>';
       }
-      if (!grid.querySelector('.empty')) grid.innerHTML = '<div class="empty">No captures yet.<br>Snap one with the phone app.</div>';
+      return;
+    }
+    const q = trayFilterQuery;
+    const visible = q
+      ? captures.filter(c => {
+          const orig = c.origin === 'pc' ? 'pc' : 'phone';
+          const hay = `#${c.id} ${c.file || ''} ${orig} ${localTime(c.created_at)}`.toLowerCase();
+          return hay.includes(q);
+        })
+      : captures;
+    if (!visible.length) {
+      for (const [id, cell] of cellById) dropCell(id, cell);
+      grid.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = `No captures match "${trayFilterQuery}".`;
+      grid.appendChild(empty);
       return;
     }
     grid.querySelector('.empty')?.remove(); // drop the empty placeholder once rows exist
-    const ids = new Set(captures.map(c => c.id));
+    const visibleMap = new Map(visible.map(c => [c.id, c]));
     for (const [id, cell] of cellById) {
-      if (ids.has(id)) continue;
-      if (thumbObserver) thumbObserver.unobserve(cell);
-      thumbTargets.delete(cell);
-      cell.remove();
-      cellById.delete(id);
+      const nextCap = visibleMap.get(id);
+      if (!nextCap || cell.dataset.file !== nextCap.file) {
+        if (nextCap && cell.dataset.file !== nextCap.file) {
+          const oldThumb = thumbs.get(id);
+          if (oldThumb) URL.revokeObjectURL(oldThumb);
+          thumbs.delete(id);
+          blobs.delete(id);
+          if (pngCache.has(id)) { pngBytes -= pngCache.get(id).size; pngCache.delete(id); }
+          releaseFullUrl(id);
+        }
+        dropCell(id, cell);
+      }
     }
     // ONE ordered pass: place each cell after the one before it. A cell already
     // in position is never touched (no DOM write, no re-observe, no re-decode).
     let prev = null;
-    for (const c of captures) {
+    for (const c of visible) {
       let cell = cellById.get(c.id);
       if (!cell) { cell = buildCell(c); cellById.set(c.id, cell); }
       const wantNext = prev ? prev.nextSibling : grid.firstChild;
@@ -874,7 +713,8 @@
       // an EMPTY grid while the fingerprint still matches, and that tick must
       // refetch rather than leave "no captures yet" on screen.
       const v = await fetchCapturesVersion();
-      const fp = v ? `${v.n}:${v.latest}` : null;
+      const fp = v ? `${v.n}:${v.latest}:${v.rev ?? 0}` : null;
+      lastLoadFailed = false;
       // The SAME response carries the newest TEXT id, and the tray used to throw
       // it away: the text list was rendered once when the tray opened and never
       // again, so a text sent from the phone while the tray was open never
@@ -885,26 +725,30 @@
         textsVersionId = v.textId;
         loadTexts({ quiet: true });
       }
-      if (fp && fp === capturesVersion && captures.length) return;
+      if (fp && fp === capturesVersion && captures.length) {
+        if (grid.querySelector('.empty-err')) render();
+        return;
+      }
       const caps = await fetchCaptures();
       capturesVersion = fp;
       // skip the re-render entirely when nothing changed (poll tick with no news)
       const unchanged = caps.length === captures.length &&
         caps[0]?.id === captures[0]?.id &&
-        caps.every((c, i) => c.id === captures[i]?.id);
-      if (unchanged && grid.childElementCount) return;
+        caps.every((c, i) => c.id === captures[i]?.id && c.file === captures[i]?.file);
+      if (unchanged && grid.childElementCount && !grid.querySelector('.empty-err')) return;
       captures = caps;
       render();
-      if (open) setStatus(IDLE_STATUS);
+      if (open) { placePanel(); setStatus(IDLE_STATUS); }
       // warm only the newest few full-size images — the rest load on hover
       captures.slice(0, 5).forEach(prefetchFull);
     } catch {
+      lastLoadFailed = true;
       // only clear the UI if we previously had data (don't flash on first tick)
       if (captures.length || grid.childElementCount) {
         captures = [];
         capturesVersion = null; // the next successful tick must refetch, not trust the fingerprint
-        render();
       }
+      render();
       setStatus('server not reachable — press ⟳ Sync or start ProofPipe', true);
       serverHostSynced = false;
     }
@@ -955,26 +799,7 @@
   // + toast (and are remembered so next time skips straight there).
   const PASTE_FAIL_KEY = 'pp_paste_fail';
 
-  function toast(text, isErr = false) {
-    const d = document.createElement('div');
-    d.textContent = text;
-    d.style.cssText = [
-      'position:fixed', 'bottom:18px', 'left:50%', 'transform:translateX(-50%)',
-      'z-index:2147483647',
-      `background:${isErr ? 'rgba(54, 16, 22, 0.88)' : 'rgba(14, 20, 38, 0.86)'}`,
-      '-webkit-backdrop-filter:saturate(200%) blur(28px)',
-      'backdrop-filter:saturate(200%) blur(28px)',
-      'color:#f5f7ff',
-      `border:1px solid ${isErr ? 'rgba(255, 69, 58, 0.5)' : 'rgba(255, 255, 255, 0.22)'}`,
-      'border-radius:999px', 'padding:8px 18px',
-      'font:600 12.5px/1.3 -apple-system,"SF Pro Text",system-ui,sans-serif',
-      'letter-spacing:-0.01em',
-      'box-shadow:0 14px 36px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.22)',
-      'transition:opacity .2s ease',
-    ].join(';');
-    document.documentElement.appendChild(d);
-    setTimeout(() => { d.style.opacity = '0'; setTimeout(() => d.remove(), 220); }, 2400);
-  }
+  const toast = (text, isErr) => PPTrayUI.toast(text, isErr);
 
   // Every way a chat site spells "this is the box you type in". The old list was
   // `[contenteditable="true"], textarea, input[type="text"]` — it missed
@@ -1249,9 +1074,7 @@
 
   // popup "Show p button on this site" lands here; also report FAB visibility
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    // unhideSite is the older message (per-site only); both names now clear
-    // per-site AND global hide — one path, so the two can't drift apart.
-    if (msg && (msg.type === 'unhideSite' || msg.type === 'unhideGlobal')) {
+    if (msg && msg.type === 'unhideGlobal') {
       try { localStorage.removeItem(FAB_HIDE_KEY); } catch {}
       setFabGloballyHidden(false);
       sendResponse({ ok: true });
@@ -1266,18 +1089,69 @@
     }
   });
 
-  // open the panel anchored to the FAB (flip up/sideways near screen edges)
+  // open the panel anchored to the FAB across all four viewport quadrants
   function placePanel() {
-    const fabRight = host.offsetLeft + host.offsetWidth;
-    panel.style.right = `${Math.max(8, window.innerWidth - fabRight)}px`;
-    const roomAbove = host.offsetTop > 340; // panel is ~300px tall
-    panel.style.bottom = roomAbove ? `${window.innerHeight - host.offsetTop + 10}px` : '10px';
+    const pad = 10;
+    const gap = 10;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const fabLeft = host.offsetLeft;
+    const fabTop = host.offsetTop;
+    const fabW = host.offsetWidth || 38;
+    const fabH = host.offsetHeight || 38;
+    const fabRight = fabLeft + fabW;
+    const fabBottom = fabTop + fabH;
+
+    const pw = Math.min(panel.offsetWidth || 296, Math.max(200, vw - pad * 2));
+    const ph = Math.min(panel.offsetHeight || 360, Math.max(180, vh - pad * 2));
+
+    const openRight = (fabLeft + fabW / 2) < vw / 2;
+    const rawLeft = openRight ? fabLeft : (fabRight - pw);
+    const left = clamp(rawLeft, pad, Math.max(pad, vw - pw - pad));
+
+    const spaceAbove = fabTop - pad - gap;
+    const spaceBelow = vh - fabBottom - pad - gap;
+    const openBelow = spaceAbove < ph && spaceBelow > spaceAbove;
+    const rawTop = openBelow ? (fabBottom + gap) : (fabTop - gap - ph);
+    const top = clamp(rawTop, pad, Math.max(pad, vh - ph - pad));
+
+    panel.style.left = `${Math.round(left)}px`;
+    panel.style.top = `${Math.round(top)}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transformOrigin = `${openRight ? 'left' : 'right'} ${openBelow ? 'top' : 'bottom'}`;
   }
+  function describeChatTarget(el) {
+    if (!el || el === document.body) return 'Page (document paste)';
+    const label = (
+      el.getAttribute?.('aria-label') ||
+      el.getAttribute?.('placeholder') ||
+      el.getAttribute?.('data-placeholder') ||
+      el.id ||
+      el.tagName?.toLowerCase() ||
+      'editor'
+    ).trim().replace(/\s+/g, ' ');
+    return label.length > 28 ? `${label.slice(0, 27)}…` : label;
+  }
+  function updateTargetPill() {
+    if (!targetPill) return;
+    const desc = describeChatTarget(findChatTarget());
+    targetPill.textContent = '';
+    const lbl = document.createElement('span');
+    lbl.textContent = 'Target: ';
+    const val = document.createElement('strong');
+    val.textContent = desc;
+    targetPill.append(lbl, val);
+    targetPill.title = `Auto-paste & Ctrl+Enter target: ${desc}`;
+  }
+  document.addEventListener('focusin', () => { if (open) updateTargetPill(); }, true);
+
   function setOpen(next, { focusFab = true } = {}) {
     open = next;
     fab.setAttribute('aria-expanded', String(open));
     if (open) {
       panel.classList.add('open');
+      updateTargetPill();
       placePanel(); load(); loadTexts(); startPoll();
       // keyboard users land IN the tray (Escape returns focus to the FAB); the
       // panel is programmatically focusable, so it takes no focus ring of its own
@@ -1320,54 +1194,76 @@
   const TEXTS_LIMIT = 10;
   async function fetchTexts() {
     try { return await bg({ type: 'texts', limit: TEXTS_LIMIT }); } catch {}
-    for (const base of directBases()) {
-      try {
-        const r = await fetch(`${base}/api/text?source=phone&limit=${TEXTS_LIMIT}`, { signal: AbortSignal.timeout(JSON_TIMEOUT_MS) });
-        if (r.ok) return await r.json();
-      } catch {}
-    }
+    const hit = await PPDiscovery.fetchFirst(directBases(), `/api/text?source=phone&limit=${TEXTS_LIMIT}`, undefined, JSON_TIMEOUT_MS);
+    if (hit) return await hit.response.json();
     throw new Error('unreachable');
   }
 
-  // `quiet` = the poll's refresh (load() fires it whenever the newest text id
-  // moves). A quiet pass never flashes the placeholder and never rebuilds an
-  // identical list — that would throw away the user's scroll position every 5s.
-  let textsKey = null; // `${id}:${body}` of every row — "did anything change?"
-  let textsSeq = 0;    // newest load wins: opening the tray fires a LOUD load while
-                       // the poll (load() → the textId hook) fires a quiet one, and
-                       // if the quiet pass landed first the loud one would find the
-                       // key already written and leave "…" on screen for good
+  function renderTexts() {
+    txtList.innerHTML = '';
+    if (!allTexts.length) { txtList.innerHTML = '<div class="txtnone">no texts from the phone yet</div>'; return; }
+    const q = trayFilterQuery;
+    const visible = q
+      ? allTexts.filter(t => {
+          const src = t.source === 'pc' ? 'pc' : 'phone';
+          return `${t.body || ''} #${t.id} ${src}`.toLowerCase().includes(q);
+        })
+      : allTexts;
+    if (!visible.length) {
+      const none = document.createElement('div');
+      none.className = 'txtnone';
+      none.textContent = `no texts match "${trayFilterQuery}"`;
+      txtList.appendChild(none);
+      return;
+    }
+    for (const t of visible) {
+      const d = document.createElement('div');
+      d.className = 'txtitem';
+      d.title = 'Click to copy';
+      const src = t.source === 'pc' ? 'pc' : 'phone';
+      const badge = document.createElement('span');
+      badge.className = `txt-origin ${src}`;
+      badge.textContent = src === 'pc' ? 'PC' : 'Phone';
+      const bodySpan = document.createElement('span');
+      bodySpan.className = 'txtitem-body';
+      bodySpan.textContent = t.body;
+      d.append(badge, bodySpan);
+      d.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(t.body);
+          setStatus(`copied text #${t.id} — Ctrl+V anywhere`);
+        } catch { setStatus('copy blocked — select the text on the page instead', true); }
+      };
+      txtList.appendChild(d);
+    }
+  }
+
+  let textsKey = null;
+  let textsSeq = 0;
   async function loadTexts({ quiet = false } = {}) {
     const seq = ++textsSeq;
     if (!quiet) { txtList.innerHTML = '<div class="txtnone">…</div>'; textsKey = null; }
     try {
       const texts = await fetchTexts();
-      if (seq !== textsSeq) return; // superseded by a newer load
+      if (seq !== textsSeq) return;
       const key = texts.map(t => `${t.id}:${t.body}`).join('\n');
-      if (textsKey === key) return; // poll tick with no news — leave the DOM alone
+      if (textsKey === key) return;
       textsKey = key;
-      txtList.innerHTML = '';
-      if (!texts.length) { txtList.innerHTML = '<div class="txtnone">no texts from the phone yet</div>'; return; }
-      for (const t of texts) {
-        const d = document.createElement('div');
-        d.className = 'txtitem';
-        d.textContent = t.body;
-        d.title = 'Click to copy';
-        d.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(t.body);
-            setStatus(`copied text #${t.id} — Ctrl+V anywhere`);
-          } catch { setStatus('copy blocked — select the text on the page instead', true); }
-        };
-        txtList.appendChild(d);
-      }
+      allTexts = texts;
+      renderTexts();
+      if (open) placePanel();
     } catch {
-      // A transient failure must not paint an error over rows the user is
-      // reading (and the 5s poll would repaint it every tick). Only a tray with
-      // nothing rendered yet reports the server as unreachable.
       if (textsKey !== null) return;
       txtList.innerHTML = '<div class="txtnone">server not reachable</div>';
     }
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      trayFilterQuery = searchInput.value.trim().toLowerCase();
+      render();
+      if (textsKey !== null) renderTexts();
+    });
   }
 
   async function sendText() {
@@ -1377,19 +1273,12 @@
     try {
       try { await bg({ type: 'sendText', body }); }
       catch {
-        let ok = false;
-        for (const base of directBases()) {
-          try {
-            const r = await fetch(`${base}/api/text`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ body, source: 'pc' }),
-              signal: AbortSignal.timeout(5000),
-            });
-            if (r.ok) { ok = true; break; }
-          } catch {}
-        }
-        if (!ok) throw new Error('unreachable');
+        const hit = await PPDiscovery.fetchFirst(directBases(), '/api/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ body, source: 'pc' }),
+        }, 5000);
+        if (!hit) throw new Error('unreachable');
       }
       txtInput.value = '';
       setStatus('text sent to phone ✓');
@@ -1420,12 +1309,18 @@
 
   // keep the FAB reachable across resizes; honor a user-dragged position
   function position() {
+    const maxL = Math.max(10, window.innerWidth - 44);
+    const maxT = Math.max(10, window.innerHeight - 44);
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(FAB_POS_KEY) || 'null'); } catch {}
     if (saved && saved.l && saved.t) {
-      host.style.left = saved.l;
-      host.style.top = saved.t;
-      return;
+      const lNum = parseFloat(saved.l);
+      const tNum = parseFloat(saved.t);
+      if (Number.isFinite(lNum) && Number.isFinite(tNum)) {
+        host.style.left = `${clamp(lNum, 10, maxL)}px`;
+        host.style.top = `${clamp(tNum, 10, maxT)}px`;
+        return;
+      }
     }
     host.style.left = `${Math.max(10, window.innerWidth - 48)}px`;
     host.style.top = `${Math.max(10, window.innerHeight - 48)}px`;

@@ -364,6 +364,7 @@ test('every content/popup script chain provides the globals its consumers use', 
     { global: 'PPBrowserTarget', provider: 'browser-target.js', consumers: ['background.js', 'offscreen.js'] },
     { global: 'toPng', provider: 'toPng.js', consumers: ['content.js', 'popup.js'] },
     { global: 'PPFiles', provider: 'files.js', consumers: ['content.js', 'popup.js', 'background.js'] },
+    { global: 'PPTrayUI', provider: 'tray-ui.js', consumers: ['content.js'] },
   ];
   for (const { global, provider, consumers } of contracts) {
     const uses = (file, src) => src.includes(global);
@@ -419,17 +420,17 @@ test('extension: popup declares its language and the tray controls carry names',
   assert.match(popupHtml, /<html lang="en">/);
   assert.match(popupHtml, /<meta name="color-scheme" content="dark">/);
 
-  const contentJs = fs.readFileSync(path.join(APP, 'extension', 'content.js'), 'utf8');
-  assert.match(contentJs, /class="txtsend" title="Send text to phone" aria-label="Send text to phone"/);
-  assert.match(contentJs, /:host \{ all: initial; color-scheme: dark;/, 'the tray does not inherit a light host page');
-  assert.match(contentJs, /class="icon-btn reload" title="Reload captures" aria-label="Reload captures"/);
+  const trayUiJs = fs.readFileSync(path.join(APP, 'extension', 'tray-ui.js'), 'utf8');
+  assert.match(trayUiJs, /class="txtsend" title="Send text to phone" aria-label="Send text to phone"/);
+  assert.match(trayUiJs, /:host \{ all: initial; color-scheme: dark;/, 'the tray does not inherit a light host page');
+  assert.match(trayUiJs, /class="icon-btn reload" title="Reload captures" aria-label="Reload captures"/);
   // decorative svgs must not contribute to a name, and no bare glyph may BE one
   for (const name of ['fab', 'icon-btn sync', 'icon-btn reload', 'txtsend']) {
-    const el = new RegExp(`class="${name.replace('-', '\\-')}"[^>]*>[\\s\\S]{0,240}?<svg([^>]*)>`).exec(contentJs);
+    const el = new RegExp(`class="${name.replace('-', '\\-')}"[^>]*>[\\s\\S]{0,240}?<svg([^>]*)>`).exec(trayUiJs);
     assert.ok(el, `${name} renders an svg`);
     assert.match(el[1], /aria-hidden="true"/, `${name}'s svg is decorative`);
   }
-  assert.ok(!/\u27a4/.test(contentJs), 'no bare glyph as a button name');
+  assert.ok(!/\u27a4/.test(trayUiJs), 'no bare glyph as a button name');
 });
 
 // ---------- the tray drag carries the ORIGINAL, never the grid thumbnail ----------
@@ -499,9 +500,10 @@ test('extension: the tray drag declares the ORIGINAL media URL and never drags t
   // 1c. THE DRAG SOURCE IS THE TILE'S <img>, and it is UPGRADED TO THE ORIGINAL.
   //     Blink writes a dragged <img>'s own loaded bytes (the encoded resource)
   //     into the store, so whatever that image has loaded is what the drop gets.
+  const trayUiJs = fs.readFileSync(path.join(APP, 'extension', 'tray-ui.js'), 'utf8');
   assert.match(contentJs, /img\.draggable = true;/,
     "the tile's <img> must be the drag source — an image drag is the only shape a drop in the same document reads");
-  assert.match(contentJs, /\.cell \.thumb \{ -webkit-user-drag: auto; \}/,
+  assert.match(trayUiJs, /\.cell \.thumb \{ -webkit-user-drag: auto; \}/,
     'the tile image must keep -webkit-user-drag: auto — none silently empties every drag');
   assert.match(contentJs, /function upgradeTile\(c, img\)/,
     'the hovered tile must be upgraded so the dragged image IS the stored original');
@@ -732,4 +734,59 @@ test('extension: Ctrl+Enter transfers a capture straight into the chat', () => {
     'the tray\'s resting hint names the shortcut');
   assert.ok(!contentJs.includes("setStatus('drag → chat · click = copy')"),
     'the idle hint is one string, so a load and a drag end cannot disagree');
+});
+
+test('extension: popup & tray provide live search, origin badges, quick actions, and recovery', () => {
+  const popupHtml = fs.readFileSync(path.join(APP, 'extension', 'popup.html'), 'utf8');
+  const popupJs = fs.readFileSync(path.join(APP, 'extension', 'popup.js'), 'utf8');
+  const trayUiJs = fs.readFileSync(path.join(APP, 'extension', 'tray-ui.js'), 'utf8');
+  const contentJs = fs.readFileSync(path.join(APP, 'extension', 'content.js'), 'utf8');
+  const bgJs = fs.readFileSync(path.join(APP, 'extension', 'background.js'), 'utf8');
+
+  // Popup parity & recovery
+  assert.ok(popupHtml.includes('id="open-workbench"'), 'popup header has Open Workbench button');
+  assert.ok(popupHtml.includes('id="search-input"'), 'popup has live search input');
+  assert.match(popupJs, /className = `origin-badge/);
+  assert.match(popupJs, /className = 'item-del'/);
+  assert.match(popupJs, /err-conn-settings/);
+  assert.match(popupJs, /err-test-/);
+  assert.match(popupJs, /err-open-workbench/);
+  assert.ok(!/window\.open\b/.test(popupJs), 'popup avoids window.open');
+
+  // Floating tray parity & recovery
+  assert.ok(trayUiJs.includes('class="target-pill"'), 'tray shows active paste target pill');
+  assert.ok(trayUiJs.includes('class="tray-search"'), 'tray includes live search input');
+  assert.match(contentJs, /cell-origin/);
+  assert.match(contentJs, /pasteBtn\.className = 'cell-paste'/);
+  assert.match(contentJs, /pasteBtn\.draggable = false/);
+  assert.match(contentJs, /function describeChatTarget\(/);
+  assert.match(contentJs, /function renderTrayReachError\(/);
+  assert.ok(!/window\.open\b/.test(contentJs), 'content script avoids window.open');
+
+  // Background SW handlers
+  assert.match(bgJs, /msg\.type === 'deleteCapture'/);
+  assert.match(bgJs, /msg\.type === 'deleteText'/);
+  assert.match(bgJs, /msg\.type === 'openWorkbench'/);
+});
+
+test('extension: Liquid Glass swipe-dismissible bottom-right toast dock and 4-quadrant tray anchoring', () => {
+  const trayUiJs = fs.readFileSync(path.join(APP, 'extension', 'tray-ui.js'), 'utf8');
+  const contentJs = fs.readFileSync(path.join(APP, 'extension', 'content.js'), 'utf8');
+
+  // Non-blocking bottom-right Liquid Glass toast dock with swipe-to-dismiss & hover pause
+  assert.match(trayUiJs, /id = 'proofpipe-toast-dock'/);
+  assert.match(trayUiJs, /'right:18px',\s*'bottom:18px'/);
+  assert.match(trayUiJs, /'pointer-events:none'/);
+  assert.match(trayUiJs, /'pointer-events:auto'/);
+  assert.match(trayUiJs, /'touch-action:none'/);
+  assert.match(trayUiJs, /backdrop-filter:saturate\(220%\) blur\(34px\)/);
+  assert.match(trayUiJs, /d\.addEventListener\('pointerdown'/);
+  assert.match(trayUiJs, /d\.addEventListener\('pointermove'/);
+  assert.match(trayUiJs, /d\.addEventListener\('mouseenter'/);
+
+  // Full 4-quadrant panel anchoring relative to dragged FAB + clamped restore
+  assert.match(contentJs, /panel\.style\.left = `\$\{Math\.round\(left\)\}px`/);
+  assert.match(contentJs, /panel\.style\.top = `\$\{Math\.round\(top\)\}px`/);
+  assert.match(contentJs, /panel\.style\.transformOrigin = `\$\{openRight \? 'left' : 'right'\} \$\{openBelow \? 'top' : 'bottom'\}`/);
+  assert.match(contentJs, /clamp\(lNum,\s*10,\s*maxL\)/);
 });

@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["toPng.js", "discovery.js", "paste-logic.js", "files.js", "content.js"],
+      "js": ["toPng.js", "discovery.js", "paste-logic.js", "files.js", "tray-ui.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

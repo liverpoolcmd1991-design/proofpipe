@@ -2,15 +2,26 @@
 
 All notable changes to ProofPipe are documented in this file.
 
+## [1.25.0] — 2026-11-15
+
+### Added
+- **Capture Rotation & Batch Delete Endpoints (`server/store.js`, `server/captures.js`, `API.md`)**: Added `POST /api/captures/:id/rotate` (`deg` 90/180/270) with atomic thumbnail regeneration and `rev` version tracking in `GET /api/captures/version`, plus `{ ids }` selective batch deletion on `DELETE /api/captures`.
+- **Desktop Lightbox, Capture Grid Multi-Select, Focus Trap & Liquid Glass Notification Dock (`public/index.html`, `public/style.css`, `public/app.js`)**: Added Fit/100%/200% zoom, pan, persistent 90° CW rotation, pixel dimensions (`W × H px`), `Phone`/`PC` origin badge, `N / Total` counter, Capture Grid batch selection (`#captures-select-btn`, `#captures-select-all`, `#captures-delete-selected`), `Tab`/`Shift+Tab` modal focus trapping with opener focus restoration, a non-blocking bottom-right Liquid Glass swipe-dismissible notification dock (`#pc-notif-dock`), initial shimmer skeletons (`#grid` / `#file-list`), and `#conn-banner` with manual `Retry now`; removed the duplicate rail Settings trigger (`#settings-btn`).
+- **Mobile Viewer HUD/Gestures, Liquid Glass Toasts, Batch Selection & Offline Icon Sync (`public/phone.html`, `public/phone.css`, `public/phone-viewer.js`, `public/phone.js`, `public/sw.js`)**: Added a top viewer HUD bar, inline remote loading/retry, stage prev/next arrows, `syncRotFitScale()` rotation fitting, pinch-zoom, vertical swipe-to-dismiss, single-tap chrome toggle, `Save rotation` (server & IndexedDB outbox), `#select-toggle` / long-press `#batch-bar` multi-select, composer char count/URL badge/`Paste & Send`, Liquid Glass swipe-dismissible `.flash` & `#undo-toast`, and offline SW precaching for `chevron-left.svg` / `chevron-right.svg` (`proofpipe-v37`).
+- **Extension Tray Quadrant Anchoring, Liquid Glass Page Toasts & Parity (`extension/`)**: Added dynamic 4-quadrant FAB anchoring (`placePanel()`) with clamped FAB restore positions, a non-blocking bottom-right Liquid Glass swipe-dismissible toast stack (`PPTrayUI.toast`), live search filtering, `Phone`/`PC` origin badges, per-item delete buttons, `Open Workbench`, live Auto-Paste target indicator (`Target: ...`), quick per-cell `Paste`, and unreachable-server recovery actions.
+
+---
+
 ## [1.24.0] — 2026-11-14
 
 ### Added
 - **Byte-Level Phone Photo Upload Progress (`public/phone.js`)**: Replaced indeterminate `fetch()` uploads with `XMLHttpRequest` (`xhr.upload.onprogress`) and a weighted concurrent transfer tracker driving the Liquid Glass status wave (`--xfer-scale`) and live percentage readout.
 - **Two-Way Extension Quick Send (`extension/popup.html`, `extension/popup.js`, `extension/background.js`, `extension/manifest.json`)**: Added an inline text/URL composer (`Enter` sends), one-click active `Tab Link` sender, and one-click visible `Screenshot` uploader (`activeTab` + `/upload`, delivered live to phone and desktop workbench).
-- **Cross-Platform Daemon CLI & Windows System Tray (`scripts/daemon.js`, `scripts/tray.ps1`, `ProofPipe.bat`)**: Added detached daemon management (`npm run daemon -- start|stop|restart|status|logs|tray|autostart`), log rotation, OS login autostart configuration, and a native WinForms `NotifyIcon` tray controller.
+- **Cross-Platform Daemon CLI & Windows System Tray (`scripts/daemon.js`, `scripts/tray.ps1`, `ProofPipe.vbs`, `ProofPipe.bat`)**: Added detached daemon management (`npm run daemon -- start|stop|restart|status|logs|tray|autostart`), log rotation, OS login autostart configuration, a native WinForms `NotifyIcon` tray controller, and a zero-console GUI-subsystem launcher (`ProofPipe.vbs`).
 
 ### Changed
 - **Extension Liquid Glass Overhaul & Cleanup (`extension/`)**: Unified the in-page floating tray (`content.js`), toolbar popup, and context-menu toasts onto the dark Liquid Glass palette while removing deprecated `dataUrl` base64 relay paths and duplicate inline styles.
+- **Full-Repo Dead Code & Asset Cleanup**: Removed unreferenced screenshots (`public/assets/`), unused SVG/CSS tokens and selectors (`public/style.css`, `public/phone.css`, `public/icons/activity.svg`), unreferenced DOM IDs (`public/index.html`), dead share/message shims (`public/phone.js`, `extension/content.js`, `public/sw.js`), unused `bun.lock`, and stale version placeholders (`API.md`, `public/index.html`).
 
 ---
 

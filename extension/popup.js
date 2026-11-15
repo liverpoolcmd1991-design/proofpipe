@@ -20,11 +20,7 @@ async function candidateBases() {
   let pinned = null;
   let manualPort = null;
   try { ({ pp_host: pinned = null, pp_port: manualPort = null } = await chrome.storage?.local?.get(['pp_host', 'pp_port']) || {}); } catch {}
-  if (pinned && !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(pinned)) pinned = null;
-  manualPort = PPDiscovery.parsePort(manualPort);
-  const pinnedPort = pinned ? Number(new URL(pinned).port) || 80 : null;
-  const bases = PPDiscovery.candidateHosts(PPDiscovery.candidatePorts({ manualPort, pinnedPort }));
-  return pinned ? [pinned, ...bases.filter(b => b !== pinned)] : bases;
+  return PPDiscovery.originList({ pinned, manualPort });
 }
 
 // ---------- manual server port override ----------
@@ -99,15 +95,48 @@ async function bg(msg) {
   return res;
 }
 
+let lastKnownHost = null;
+
 async function fetchCaptures() {
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/api/captures`, { signal: AbortSignal.timeout(JSON_TIMEOUT_MS) });
-      if (r.ok) return await r.json();
-    } catch {}
-  }
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), '/api/captures', undefined, JSON_TIMEOUT_MS);
+  if (hit) { lastKnownHost = hit.base; return await hit.response.json(); }
   try { return await bg({ type: 'captures' }); } catch {}
   throw new Error('server unreachable from the extension (direct + SW)');
+}
+
+async function openWorkbenchTab() {
+  let targetUrl = lastKnownHost;
+  if (!targetUrl) {
+    try {
+      const { pp_host } = await chrome.storage?.local?.get('pp_host') || {};
+      if (pp_host) targetUrl = pp_host;
+    } catch {}
+  }
+  if (!targetUrl) {
+    try {
+      const res = await bg({ type: 'getHost' });
+      if (res && res.host) targetUrl = res.host;
+    } catch {}
+  }
+  if (!targetUrl) targetUrl = `http://127.0.0.1:${PPDiscovery.DEFAULT_PORT}`;
+  const clean = targetUrl.endsWith('/') ? targetUrl : `${targetUrl}/`;
+  try {
+    await chrome.tabs.create({ url: clean });
+  } catch {
+    setStatus('Could not open workbench tab.', true);
+  }
+}
+
+async function deleteCaptureById(id) {
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), `/api/captures/${id}`, { method: 'DELETE' }, JSON_TIMEOUT_MS);
+  if (hit) { lastKnownHost = hit.base; return await hit.response.json(); }
+  return await bg({ type: 'deleteCapture', id });
+}
+
+async function deleteTextById(id) {
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), `/api/text/${id}`, { method: 'DELETE' }, JSON_TIMEOUT_MS);
+  if (hit) { lastKnownHost = hit.base; return await hit.response.json(); }
+  return await bg({ type: 'deleteText', id });
 }
 
 // object URL of a media file (thumbnail or original) — no dataURL round trip.
@@ -143,13 +172,8 @@ try {
 } catch { thumbObserver = null; }
 // raw Blob of a media file (for clipboard re-encode and object URLs)
 async function fetchMediaBlob(file) {
-  const safe = safeFile(file);
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/media/${safe}`, { signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS) });
-      if (r.ok) return await r.blob();
-    } catch {}
-  }
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), `/media/${safeFile(file)}`, undefined, MEDIA_TIMEOUT_MS);
+  if (hit) return await hit.response.blob();
   try {
     const blob = await bg({ type: 'mediaBlob', file });
     if (blob instanceof Blob) return blob;
@@ -173,9 +197,8 @@ async function fetchMediaUrl(file) {
 // slice of that string ("09-12 04:31" = UTC) while the harness and the phone
 // both render the viewer's LOCAL time.
 function popupWhen(sql) {
-  if (!sql) return '';
-  const d = new Date(String(sql).replace(' ', 'T') + 'Z');
-  return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const d = PPDiscovery.parseUtcDate(sql);
+  return d ? d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 }
 
 function copiedFlash(el, msg) {
@@ -198,108 +221,272 @@ async function copyCapture(capture, el) {
   }
 }
 
+let lastCaps = [];
+let lastTexts = [];
+let filterQuery = '';
+
+function originBadge(originVal) {
+  const isPc = originVal === 'pc';
+  const span = document.createElement('span');
+  span.className = `origin-badge ${isPc ? 'pc' : 'phone'}`;
+  span.textContent = isPc ? 'PC' : 'Phone';
+  return span;
+}
+
 function renderReachError(prefix, err) {
   const list = $('#list');
   list.innerHTML = '';
   const empty = document.createElement('div');
   empty.className = 'empty';
-  empty.textContent = prefix;
+  const msg = document.createElement('span');
+  msg.textContent = prefix;
   const detail = document.createElement('span');
   detail.className = 'err-detail';
   detail.textContent = String((err && err.message) || err);
-  empty.appendChild(detail);
+
+  const actions = document.createElement('div');
+  actions.className = 'empty-actions';
+
+  const connBtn = document.createElement('button');
+  connBtn.type = 'button';
+  connBtn.id = 'err-conn-settings';
+  connBtn.className = 'recovery-btn';
+  connBtn.textContent = 'Open Connection Settings';
+  connBtn.onclick = () => {
+    const adv = $('details.ext-advanced');
+    if (adv) adv.open = true;
+    const portInput = $('#port-input');
+    if (portInput) { portInput.scrollIntoView({ block: 'nearest' }); portInput.focus(); }
+  };
+
+  const testBtn = document.createElement('button');
+  testBtn.type = 'button';
+  testBtn.id = 'err-test-8787';
+  testBtn.className = 'recovery-btn';
+  testBtn.textContent = `Test Port ${PPDiscovery.DEFAULT_PORT}`;
+  testBtn.onclick = async () => {
+    testBtn.disabled = true;
+    const p = PPDiscovery.DEFAULT_PORT;
+    setStatus(`Testing port ${p}…`);
+    let foundUrl = null;
+    for (const host of [`http://127.0.0.1:${p}`, `http://localhost:${p}`]) {
+      try {
+        const r = await fetch(`${host}/api/version`, { signal: AbortSignal.timeout(1500) });
+        if (!r.ok) continue;
+        const j = await r.json().catch(() => null);
+        if (j && typeof j.version === 'string' && /^v\d/.test(j.version)) { foundUrl = host; break; }
+      } catch {}
+    }
+    testBtn.disabled = false;
+    if (foundUrl) {
+      lastKnownHost = foundUrl;
+      const portStatus = $('#port-status');
+      if (portStatus) portStatus.textContent = `Server found on port ${p} ✓`;
+      try { await chrome.runtime.sendMessage({ type: 'resetHost' }); } catch {}
+      setStatus(`✓ Connected on port ${p}`);
+      await showTab(activeTab);
+    } else {
+      setStatus(`No server answered on port ${p} — start ProofPipe first.`, true);
+    }
+  };
+
+  const wbBtn = document.createElement('button');
+  wbBtn.type = 'button';
+  wbBtn.id = 'err-open-workbench';
+  wbBtn.className = 'recovery-btn';
+  wbBtn.textContent = 'Open Workbench';
+  wbBtn.onclick = () => openWorkbenchTab();
+
+  actions.append(connBtn, testBtn, wbBtn);
+  empty.append(msg, detail, actions);
   list.appendChild(empty);
 }
 
-let lastCaps = [];
+function renderCaps() {
+  const list = $('#list');
+  list.innerHTML = '';
+  if (thumbObserver) thumbObserver.disconnect();
+  if (!lastCaps.length) {
+    list.innerHTML = '<div class="empty">No captures yet.<br>Snap from your phone or click Screenshot above.</div>';
+    return;
+  }
+  const q = filterQuery;
+  const rows = q
+    ? lastCaps.filter(c => {
+        const orig = c.origin === 'pc' ? 'pc' : 'phone';
+        const hay = `#${c.id} ${c.file || ''} ${orig} ${popupWhen(c.created_at)}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : lastCaps;
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = `No captures match "${filterQuery}".`;
+    list.appendChild(empty);
+    return;
+  }
+  // thumbnails stream in per item AS IT SCROLLS INTO VIEW (see thumbObserver)
+  for (const c of rows) {
+    const d = document.createElement('div');
+    d.className = 'item';
+    d.title = `#${c.id} — click to copy`;
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    if (thumbObserver) {
+      thumbTargets.set(d, { c, img });
+      thumbObserver.observe(d);
+    } else {
+      fetchMediaUrl(`t-${c.file}`).then(u => { img.src = u; }).catch(() => {});
+    }
+    const info = document.createElement('div');
+    info.className = 'item-main';
+    const idLine = document.createElement('div');
+    idLine.className = 'item-top';
+    const idTxt = document.createElement('span');
+    idTxt.textContent = `#${c.id}`;
+    idLine.append(idTxt, originBadge(c.origin));
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = popupWhen(c.created_at);
+    info.append(idLine, meta);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'item-del';
+    delBtn.textContent = '×';
+    delBtn.title = `Delete capture #${c.id}`;
+    delBtn.setAttribute('aria-label', `Delete capture #${c.id}`);
+    delBtn.onclick = async e => {
+      e.stopPropagation();
+      delBtn.disabled = true;
+      try {
+        await deleteCaptureById(c.id);
+        lastCaps = lastCaps.filter(x => x.id !== c.id);
+        renderCaps();
+        setStatus(`✓ Deleted capture #${c.id}`);
+      } catch {
+        delBtn.disabled = false;
+        setStatus(`Could not delete capture #${c.id}.`, true);
+      }
+    };
+
+    d.append(img, info, delBtn);
+    d.onclick = () => copyCapture(c, d);
+    // keyboard-reachable: copying is this panel's primary action
+    d.tabIndex = 0;
+    d.setAttribute('role', 'button');
+    d.setAttribute('aria-label', `Capture #${c.id} from ${c.origin === 'pc' ? 'PC' : 'Phone'} — copy to clipboard`);
+    d.onkeydown = e => {
+      if (e.target.closest && e.target.closest('.item-del')) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); }
+    };
+    list.appendChild(d);
+  }
+}
 
 async function loadList() {
   try {
     lastCaps = await fetchCaptures();
-    const list = $('#list');
-    list.innerHTML = '';
-    if (thumbObserver) thumbObserver.disconnect(); // drop the previous items' targets
-    if (!lastCaps.length) { list.innerHTML = '<div class="empty">No captures yet.<br>Snap from your phone or click Screenshot above.</div>'; return; }
-    // thumbnails stream in per item AS IT SCROLLS INTO VIEW (see thumbObserver)
-    for (const c of lastCaps) {
-      const d = document.createElement('div');
-      d.className = 'item';
-      d.title = `#${c.id} — click to copy`;
-      const img = document.createElement('img');
-      img.loading = 'lazy';
-      if (thumbObserver) {
-        thumbTargets.set(d, { c, img });
-        thumbObserver.observe(d);
-      } else {
-        fetchMediaUrl(`t-${c.file}`).then(u => { img.src = u; }).catch(() => {});
-      }
-      const info = document.createElement('div');
-      const idLine = document.createElement('div');
-      idLine.textContent = `#${c.id}`;
-      const meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = popupWhen(c.created_at);
-      info.append(idLine, meta);
-      d.append(img, info);
-      d.onclick = () => copyCapture(c, d);
-      // keyboard-reachable: copying is this panel's primary action
-      d.tabIndex = 0;
-      d.setAttribute('role', 'button');
-      d.setAttribute('aria-label', `Capture #${c.id} — copy to clipboard`);
-      d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); } };
-      list.appendChild(d);
-    }
+    renderCaps();
   } catch (e) {
-    renderReachError('ProofPipe server not reachable from Chrome. Start ProofPipe, then press ⟳ Sync now. ', e);
+    renderReachError('ProofPipe server not reachable from Chrome. Start ProofPipe, then press ⟳ Sync now.', e);
   }
 }
 
 // ---------- texts from the phone: tap to copy ----------
 async function fetchTexts() {
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/api/text?source=phone&limit=10`, { signal: AbortSignal.timeout(JSON_TIMEOUT_MS) });
-      if (r.ok) return await r.json();
-    } catch {}
-  }
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), '/api/text?source=phone&limit=10', undefined, JSON_TIMEOUT_MS);
+  if (hit) { lastKnownHost = hit.base; return await hit.response.json(); }
   try { return await bg({ type: 'texts' }); } catch {}
   throw new Error('server unreachable');
 }
 
+function renderTexts() {
+  const list = $('#list');
+  list.innerHTML = '';
+  if (thumbObserver) thumbObserver.disconnect();
+  if (!lastTexts.length) {
+    list.innerHTML = '<div class="empty">No texts from the phone yet.<br>Send one from the phone\'s text box, or share text to ProofPipe on Android.</div>';
+    return;
+  }
+  const q = filterQuery;
+  const rows = q
+    ? lastTexts.filter(t => {
+        const src = t.source === 'pc' ? 'pc' : 'phone';
+        const hay = `${t.body || ''} #${t.id} ${src} ${popupWhen(t.created_at)}`.toLowerCase();
+        return hay.includes(q);
+      })
+    : lastTexts;
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = `No texts match "${filterQuery}".`;
+    list.appendChild(empty);
+    return;
+  }
+  for (const t of rows) {
+    const d = document.createElement('div');
+    d.className = 'titem';
+    d.title = 'Click to copy';
+    const main = document.createElement('div');
+    main.className = 'titem-main';
+    const body = document.createElement('div');
+    body.className = 'titem-body';
+    body.textContent = t.body;
+    const when = document.createElement('div');
+    when.className = 'when';
+    const when_ = popupWhen(t.created_at);
+    const metaTxt = document.createElement('span');
+    metaTxt.textContent = `#${t.id}${when_ ? ` · ${when_}` : ''}`;
+    when.append(originBadge(t.source), metaTxt);
+    main.append(body, when);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'item-del';
+    delBtn.textContent = '×';
+    delBtn.title = `Delete text #${t.id}`;
+    delBtn.setAttribute('aria-label', `Delete text #${t.id}`);
+    delBtn.onclick = async e => {
+      e.stopPropagation();
+      delBtn.disabled = true;
+      try {
+        await deleteTextById(t.id);
+        lastTexts = lastTexts.filter(x => x.id !== t.id);
+        renderTexts();
+        setStatus(`✓ Deleted text #${t.id}`);
+      } catch {
+        delBtn.disabled = false;
+        setStatus(`Could not delete text #${t.id}.`, true);
+      }
+    };
+
+    d.append(main, delBtn);
+    d.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(t.body);
+        copiedFlash(d, '✓ Copied — Ctrl+V anywhere');
+      } catch {
+        setStatus('Copy failed — select and copy the text manually.', true);
+      }
+    };
+    d.tabIndex = 0;
+    d.setAttribute('role', 'button');
+    d.setAttribute('aria-label', `Text from phone #${t.id} — copy`);
+    d.onkeydown = e => {
+      if (e.target.closest && e.target.closest('.item-del')) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); }
+    };
+    list.appendChild(d);
+  }
+}
+
 async function loadTexts() {
   try {
-    const texts = await fetchTexts();
-    const list = $('#list');
-    list.innerHTML = '';
-    if (thumbObserver) thumbObserver.disconnect();
-    if (!texts.length) { list.innerHTML = '<div class="empty">No texts from the phone yet.<br>Send one from the phone\'s text box, or share text to ProofPipe on Android.</div>'; return; }
-    for (const t of texts) {
-      const d = document.createElement('div');
-      d.className = 'titem';
-      d.title = 'Click to copy';
-      const body = document.createElement('div');
-      body.textContent = t.body;
-      const when = document.createElement('div');
-      when.className = 'when';
-      const when_ = popupWhen(t.created_at);
-      when.textContent = `#${t.id}${when_ ? ` · ${when_}` : ''}`;
-      d.append(body, when);
-      d.onclick = async () => {
-        try {
-          await navigator.clipboard.writeText(t.body);
-          copiedFlash(d, '✓ Copied — Ctrl+V anywhere');
-        } catch {
-          setStatus('Copy failed — select and copy the text manually.', true);
-        }
-      };
-      d.tabIndex = 0;
-      d.setAttribute('role', 'button');
-      d.setAttribute('aria-label', `Text from phone #${t.id} — copy`);
-      d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); d.click(); } };
-      list.appendChild(d);
-    }
+    lastTexts = await fetchTexts();
+    renderTexts();
   } catch (e) {
-    renderReachError('ProofPipe server not reachable from Chrome. ', e);
+    renderReachError('ProofPipe server not reachable from Chrome.', e);
   }
 }
 
@@ -359,6 +546,26 @@ $('#sync').onclick = async () => {
   await showTab(activeTab);
   btn.removeAttribute('aria-busy');
 };
+$('#open-workbench')?.addEventListener('click', () => openWorkbenchTab());
+
+const searchInput = $('#search-input');
+const searchClear = $('#search-clear');
+if (searchInput) {
+  const applyFilter = () => {
+    filterQuery = searchInput.value.trim().toLowerCase();
+    searchClear?.classList.toggle('hidden', !searchInput.value);
+    if (activeTab === 'caps') renderCaps();
+    else renderTexts();
+  };
+  searchInput.addEventListener('input', applyFilter);
+  if (searchClear) {
+    searchClear.onclick = () => {
+      searchInput.value = '';
+      applyFilter();
+      searchInput.focus();
+    };
+  }
+}
 
 // ---------- p button hide/show ----------
 // The global flag lives in chrome.storage.local and THIS popup owns it: the
@@ -467,17 +674,12 @@ async function sendTextToPhone(raw) {
     await bg({ type: 'sendText', body });
     return true;
   } catch {}
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/api/text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body, source: 'pc' }),
-        signal: AbortSignal.timeout(JSON_TIMEOUT_MS),
-      });
-      if (r.ok) return true;
-    } catch {}
-  }
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), '/api/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body, source: 'pc' }),
+  }, JSON_TIMEOUT_MS);
+  if (hit) return true;
   throw new Error('server unreachable');
 }
 
@@ -485,21 +687,9 @@ async function uploadCaptureDataUrl(dataUrl) {
   try {
     return await bg({ type: 'uploadCapture', dataUrl });
   } catch {}
-  const blob = await (await fetch(dataUrl)).blob();
-  if (!blob || !blob.size) throw new Error('empty screenshot');
-  const fd = new FormData();
-  fd.append('source', 'pc');
-  fd.append('photo', blob, 'tab-capture.png');
-  for (const base of await candidateBases()) {
-    try {
-      const r = await fetch(`${base}/upload`, {
-        method: 'POST',
-        body: fd,
-        signal: AbortSignal.timeout(MEDIA_TIMEOUT_MS),
-      });
-      if (r.ok) return await r.json();
-    } catch {}
-  }
+  const fd = await PPDiscovery.dataUrlToUploadForm(dataUrl);
+  const hit = await PPDiscovery.fetchFirst(await candidateBases(), '/upload', { method: 'POST', body: fd }, MEDIA_TIMEOUT_MS);
+  if (hit) return await hit.response.json();
   throw new Error('upload failed');
 }
 

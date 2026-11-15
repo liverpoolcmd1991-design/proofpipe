@@ -405,3 +405,62 @@ test('orphan sweep removes files with no DB row', async () => {
   const v = await fetch(`${BASE}/api/captures/version`).then(r => r.json());
   assert.equal(files.length, v.n);
 });
+
+test('POST /api/captures/:id/rotate rotates image, bumps rev, and batch DELETE /api/captures removes selected ids', async () => {
+  // Upload two non-square captures (100x50) so 90-degree rotation swaps dimensions
+  const up = async () => {
+    const fd = new FormData();
+    fd.append('photo', new Blob([pngOfSize(60)], { type: 'image/png' }), 'rot.png');
+    const r = await fetch(`${BASE}/upload`, { method: 'POST', body: fd });
+    assert.equal(r.status, 200);
+    return r.json();
+  };
+  const a = await up();
+  const b = await up();
+  const vBefore = await fetch(`${BASE}/api/captures/version`).then(r => r.json());
+  assert.ok(Number.isInteger(vBefore.rev));
+
+  // Invalid degree or id rejected cleanly
+  assert.equal((await fetch(`${BASE}/api/captures/${a.id}/rotate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deg: 45 }),
+  })).status, 400);
+  assert.equal((await fetch(`${BASE}/api/captures/999999/rotate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deg: 90 }),
+  })).status, 404);
+
+  // Rotate capture a by 90 degrees
+  const rotRes = await fetch(`${BASE}/api/captures/${a.id}/rotate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deg: 90 }),
+  });
+  assert.equal(rotRes.status, 200);
+  const rotBody = await rotRes.json();
+  assert.equal(rotBody.ok, true);
+  assert.equal(rotBody.capture.id, a.id);
+  assert.notEqual(rotBody.capture.file, a.file, 'rotated capture writes a fresh file name');
+  assert.equal((await fetch(`${BASE}/api/captures/version`).then(r => r.json())).rev, vBefore.rev + 1);
+  assert.equal((await fetch(`${BASE}/media/${rotBody.capture.file}`)).status, 200);
+
+  // Batch delete only capture a, keeping capture b
+  const batchRes = await fetch(`${BASE}/api/captures`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: [a.id] }),
+  });
+  assert.equal(batchRes.status, 200);
+  const batchBody = await batchRes.json();
+  assert.equal(batchBody.deleted, 1);
+
+  const listAfter = await fetch(`${BASE}/api/captures`).then(r => r.json());
+  assert.ok(!listAfter.some(c => c.id === a.id), 'selected capture deleted');
+  assert.ok(listAfter.some(c => c.id === b.id), 'unselected capture preserved');
+
+  // Cleanup remaining capture b
+  await fetch(`${BASE}/api/captures/${b.id}`, { method: 'DELETE' });
+});
+

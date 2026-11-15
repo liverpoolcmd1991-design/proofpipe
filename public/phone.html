@@ -89,7 +89,13 @@
 
   <!-- the gallery leads: "did it land?" is the question this screen answers, and
        the primary action is under the thumb at the bottom instead -->
-  <div class="recent-heading"><span class="eyebrow">Recent captures</span><span id="recent-count" class="muted tnum" role="status" aria-live="polite"></span></div>
+  <div class="recent-heading">
+    <span class="eyebrow">Recent captures</span>
+    <div class="recent-heading-end">
+      <span id="recent-count" class="muted tnum" role="status" aria-live="polite"></span>
+      <button id="select-toggle" type="button" class="select-toggle-btn hidden" aria-pressed="false">Select</button>
+    </div>
+  </div>
   <div class="gallery">
     <!-- skeleton placeholders while the first load is in flight: without them the
          grid area is blank and then jumps when the tiles land -->
@@ -114,6 +120,11 @@
       <textarea id="text-input" rows="1" placeholder="Type or paste text, links, or notes to send to your PC…" autocomplete="off"
                 aria-label="Text to send to PC" enterkeyhint="send"></textarea>
       <button id="text-expand" aria-label="Expand text editor" aria-expanded="false"><i class="ic ic-chev-up"></i></button>
+    </div>
+    <div class="text-meta-strip">
+      <span id="text-char-count" class="muted tnum">0 / 10,000</span>
+      <span id="text-url-badge" class="text-url-badge hidden">URL detected</span>
+      <button id="text-paste-send" type="button" class="text-paste-btn" aria-label="Paste from clipboard and send to PC">Paste &amp; Send</button>
     </div>
   </div>
   <div id="text-queued" class="muted hidden" aria-live="polite"></div>
@@ -158,6 +169,15 @@
     </label>
   </div>
 
+  <!-- contextual batch action bar when selecting captures -->
+  <div id="batch-bar" class="batch-bar hidden" role="toolbar" aria-label="Selected captures actions">
+    <span id="batch-count" class="batch-count tnum">0 selected</span>
+    <button id="batch-all" type="button" class="cbtn batch-btn">All</button>
+    <button id="batch-retry" type="button" class="cbtn batch-btn hidden">Retry</button>
+    <button id="batch-delete" type="button" class="cbtn danger batch-btn">Delete</button>
+    <button id="batch-done" type="button" class="cbtn batch-btn">Done</button>
+  </div>
+
   <!-- the bottom bar: the queue affordance sits where the thumb already is, and
        the shutter is the ONE white surface on the screen -->
   <div class="shutter-bar">
@@ -170,19 +190,39 @@
 </div>
 
 <div id="viewer" class="hidden" role="dialog" aria-modal="true" aria-label="Capture viewer">
-    <button id="viewer-close" title="Close (Esc)" aria-label="Close capture viewer"><i class="ic ic-x"></i></button>
-    <div id="viewer-hint" class="hidden" aria-hidden="true">swipe for next capture</div>
-    <div id="viewer-stage"><img id="viewer-under" alt="" aria-hidden="true" draggable="false" decoding="async"><img id="viewer-img" alt="Capture preview" draggable="false" decoding="async"></div>
-    <div id="viewer-bar">
-      <button id="viewer-retry" class="vbtn hidden"><i class="ic ic-retry"></i>&nbsp;Retry send</button>
-    <button id="viewer-discard" class="vbtn hidden"><i class="ic ic-x"></i>&nbsp;Discard</button>
-    <!-- rotate lives here too: a sideways photo had to be sent to the PC to be
-         straightened, on the device that actually took it -->
-    <button id="viewer-rot" class="vbtn"><i class="ic ic-rotate"></i>&nbsp;Rotate</button>
-    <button id="viewer-dl" class="vbtn"><i class="ic ic-download"></i>&nbsp;Download</button>
-    <button id="viewer-del" class="vbtn del hidden"><i class="ic ic-trash"></i>&nbsp;Delete</button>
-    <span id="viewer-origin" class="chip-badge pc hidden" title="Sent from your PC"><i class="ic ic-pc" aria-hidden="true"></i>PC</span>
-    <span id="viewer-pos" aria-live="polite"></span>
+  <div id="viewer-top">
+    <div id="viewer-info">
+      <span id="viewer-origin" class="chip-badge pc hidden" title="Sent from your PC"><i class="ic ic-pc" aria-hidden="true"></i>PC</span>
+      <span id="viewer-pos" class="tnum" aria-live="polite"></span>
+      <span id="viewer-meta" class="muted tnum"></span>
+    </div>
+    <div id="viewer-top-actions">
+      <button id="viewer-zoom-btn" type="button" class="vtop-btn hidden tnum" title="Reset zoom (0)" aria-label="Current zoom, tap to reset">1×</button>
+      <button id="viewer-close" type="button" title="Close (Esc)" aria-label="Close capture viewer"><i class="ic ic-x"></i></button>
+    </div>
+  </div>
+  <div id="viewer-hint" class="hidden" aria-hidden="true">swipe horizontally for captures · swipe down to close</div>
+  <div id="viewer-stage">
+    <img id="viewer-under" alt="" aria-hidden="true" draggable="false" decoding="async">
+    <img id="viewer-img" alt="Capture preview" draggable="false" decoding="async">
+    <div id="viewer-loader" class="viewer-status hidden" aria-live="polite">
+      <span class="viewer-spinner" aria-hidden="true"></span>
+      <span>Loading full resolution…</span>
+    </div>
+    <div id="viewer-error" class="viewer-error hidden" role="alert">
+      <span id="viewer-error-msg">Could not load full-resolution capture</span>
+      <button id="viewer-error-retry" type="button" class="cbtn">Retry</button>
+    </div>
+    <button id="viewer-prev" type="button" class="viewer-nav prev hidden" title="Previous capture (Left arrow)" aria-label="Previous capture"><i class="ic ic-chev-left"></i></button>
+    <button id="viewer-next" type="button" class="viewer-nav next hidden" title="Next capture (Right arrow)" aria-label="Next capture"><i class="ic ic-chev-right"></i></button>
+  </div>
+  <div id="viewer-bar">
+    <button id="viewer-retry" type="button" class="vbtn hidden"><i class="ic ic-retry"></i><span>Retry</span></button>
+    <button id="viewer-discard" type="button" class="vbtn hidden"><i class="ic ic-x"></i><span>Discard</span></button>
+    <button id="viewer-rot" type="button" class="vbtn"><i class="ic ic-rotate"></i><span>Rotate</span></button>
+    <button id="viewer-save-rot" type="button" class="vbtn accent hidden"><i class="ic ic-rotate"></i><span>Save</span></button>
+    <button id="viewer-dl" type="button" class="vbtn"><i class="ic ic-download"></i><span>Download</span></button>
+    <button id="viewer-del" type="button" class="vbtn del hidden"><i class="ic ic-trash"></i><span>Delete</span></button>
   </div>
 </div>
 <div id="file-sheet" class="hidden" role="dialog" aria-modal="true" aria-label="File actions">
@@ -217,8 +257,10 @@
   <button id="undo-toast-btn" type="button">Undo</button>
   <i class="undo-bar" aria-hidden="true"></i>
 </div>
-<script src="/toPng.js"></script>
+<script src="/shared.js?v=__PP_VERSION__"></script>
 <script src="/queue.js"></script>
+<script src="/phone-viewer.js?v=__PP_VERSION__"></script>
+<script src="/phone-files.js?v=__PP_VERSION__"></script>
 <script src="/phone.js?v=__PP_VERSION__"></script>
 </body>
 </html>

@@ -164,7 +164,7 @@ function bootContent({ storage, siteHidden }) {
   win.chrome = chrome.api;
   win.fetch = () => Promise.reject(new Error('no server in test'));
   if (siteHidden) win.localStorage.setItem('pp_fab_hidden_site', '1');
-  for (const f of ['toPng.js', 'discovery.js', 'paste-logic.js', 'files.js', 'content.js']) win.eval(read(f));
+  for (const f of ['toPng.js', 'discovery.js', 'paste-logic.js', 'files.js', 'tray-ui.js', 'content.js']) win.eval(read(f));
   return { win, chrome, host: () => win.document.getElementById('proofpipe-tray-host') };
 }
 

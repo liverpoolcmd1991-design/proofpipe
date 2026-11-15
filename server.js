@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
-import QRCode from 'qrcode';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -12,12 +11,15 @@ import { mediaDirs, lanIPs, mediaContentType } from './server/util.js';
 import { bytes } from './server/bytes.js';
 import { createSseHub } from './server/sse.js';
 import { createTokenBucket } from './server/ratelimit.js';
+import { createLockManager } from './server/lockfile.js';
+import { initSettings } from './server/settings.js';
 import { registerCleanup } from './server/cleanup.js';
 import { registerMediaDir } from './server/mediadir.js';
 import { registerBackup } from './server/backup.js';
 import { createStore, MAX_PIXELS } from './server/store.js';
 import { registerFiles } from './server/files.js';
 import { registerCaptures } from './server/captures.js';
+import { registerText } from './server/text.js';
 import { registerBrowser } from './server/browser.js';
 
 // Set libuv threadpool size before loading native modules (sqlite, sharp).
@@ -188,6 +190,8 @@ const stmts = {
   deleteTextById: db.prepare('DELETE FROM texts WHERE id = ?'),
   deleteTextsForCapture: db.prepare('DELETE FROM texts WHERE instr(body, ?) > 0'),
   deleteAllTexts: db.prepare('DELETE FROM texts'),
+  updateCaptureFileAndBytes: db.prepare('UPDATE captures SET file = ?, bytes = ? WHERE id = ?'),
+  updateTextBodyByMedia: db.prepare('UPDATE texts SET body = replace(body, ?, ?) WHERE instr(body, ?) > 0'),
   insertFile: db.prepare("INSERT INTO files(name, file, mime, bytes, dir) VALUES (?, ?, ?, ?, ?)"),
   listFiles: db.prepare('SELECT * FROM files ORDER BY id DESC LIMIT ?'),
   listFilesBefore: db.prepare('SELECT * FROM files WHERE id < ? ORDER BY id DESC LIMIT ?'),
@@ -230,7 +234,7 @@ app.addHook('onRequest', async (req, reply) => {
   reply.header('Access-Control-Allow-Origin', '*');
   if (req.method === 'OPTIONS') {
     reply
-      .header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+      .header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS')
       .header('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || '*')
       .header('Access-Control-Max-Age', '86400');
     if (req.headers['access-control-request-private-network'] === 'true')
@@ -340,6 +344,8 @@ app.get('/', async (_req, reply) => {
   const html = (indexHtml ??= await fsp.readFile(path.join(ROOT, 'public', 'index.html'), 'utf8'));
   const stamped = html
     .replace('__ASSET_STYLE__', assetStamp('style.css'))
+    .replace('__ASSET_SHARED__', assetStamp('shared.js'))
+    .replace('__ASSET_RELEASES__', assetStamp('releases.js'))
     .replace('__ASSET_APP__', assetStamp('app.js'));
   return reply.type('text/html').send(stamped.replaceAll('__PP_VERSION__', PP_VERSION));
 });
@@ -401,52 +407,10 @@ app.get('/media/*', async (req, reply) => {
 });
 
 const PORT = Number(process.env.PORT) || 8787;
-
-const LOCK_FILE = path.join(DATA, 'proofpipe.lock');
-function readLock() {
-  try { return JSON.parse(fs.readFileSync(LOCK_FILE, 'utf8')); } catch { return null; }
-}
-const LOCK_BOOT_GRACE_MS = 20_000;
-async function lockAlive(lock) {
-  if (!lock || typeof lock.pid !== 'number' || lock.pid === process.pid) return false;
-  let pidExists = false;
-  try { process.kill(lock.pid, 0); pidExists = true; }
-  catch (e) { pidExists = e.code === 'EPERM'; }
-  if (!pidExists) return false;
-  const port = Number(lock.port);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) return true;
-  const age = Date.now() - Date.parse(lock.started || '');
-  if (Number.isFinite(age) && age < LOCK_BOOT_GRACE_MS) return true;
-  try {
-    const r = await fetch(`http://127.0.0.1:${port}/api/version`, { signal: AbortSignal.timeout(1500) });
-    if (!r.ok) return false;
-    const j = await r.json();
-    return typeof j.version === 'string' && /^v\d/.test(j.version);
-  } catch { return false; }
-}
-async function acquireLock() {
-  const payload = JSON.stringify({ pid: process.pid, port: PORT, started: new Date().toISOString() });
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      fs.writeFileSync(LOCK_FILE, payload, { flag: 'wx' });
-      return;
-    } catch (e) {
-      if (e?.code !== 'EEXIST') break;
-    }
-    const existing = readLock();
-    if (await lockAlive(existing)) {
-      console.error(`ProofPipe is ALREADY RUNNING (pid ${existing.pid}, started ${existing.started}).`);
-      console.error(`Stop it first (close its window / Ctrl+C), or point PP_DATA elsewhere.`);
-      process.exit(1);
-    }
-    try { fs.rmSync(LOCK_FILE, { force: true }); } catch {}
-  }
-  try { fs.writeFileSync(LOCK_FILE, payload); }
-  catch (e) {
-    console.error('Could not write the instance lock:', e.message);
-    process.exit(1);
-  }
-}
+const { acquireLock, releaseLock } = createLockManager({
+  lockFile: path.join(DATA, 'proofpipe.lock'),
+  port: PORT,
+});
 await acquireLock();
 
 const RATE = {
@@ -455,6 +419,12 @@ const RATE = {
 };
 const photoBucket = createTokenBucket({ ...RATE, logEvent, kind: 'photo' });
 
+const FILE_RATE = {
+  capacity: Number(process.env.PP_FILE_RATE_CAPACITY) || 60,
+  refillPerMin: Number(process.env.PP_FILE_RATE_REFILL_PER_MIN) || 60,
+};
+const fileBucket = createTokenBucket({ ...FILE_RATE, logEvent, kind: 'file' });
+
 setInterval(() => {
   bytes.set(stmts.sumBytes.get().b);
   bytes.setFiles(stmts.sumFileBytes.get().b);
@@ -462,197 +432,29 @@ setInterval(() => {
 
 setInterval(() => { runRetentionSweep().catch(() => {}); }, 60 * 60 * 1000).unref();
 
-const FILE_RATE = {
-  capacity: Number(process.env.PP_FILE_RATE_CAPACITY) || 60,
-  refillPerMin: Number(process.env.PP_FILE_RATE_REFILL_PER_MIN) || 60,
-};
-const fileBucket = createTokenBucket({ ...FILE_RATE, logEvent, kind: 'file' });
-
-app.post('/upload', { bodyLimit: UPLOAD_BODY_LIMIT }, async (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  if (!photoBucket.allow(req.ip)) return reply.code(429).send({ error: 'too many uploads, slow down' });
-  const part = await req.file();
-  if (!part) return reply.code(400).send({ error: 'no file' });
-  const rawSource = part.fields?.source;
-  const sourceVal = typeof rawSource === 'string' ? rawSource : rawSource?.value;
-  const origin = sourceVal === 'phone' ? 'phone' : 'pc';
-  const rawAuto = part.fields?.auto;
-  const autoVal = typeof rawAuto === 'string' ? rawAuto : rawAuto?.value;
-  const wantsAuto = origin === 'phone' && (rawAuto == null ? settings.autoPaste : (autoVal === '1' || autoVal === 'true'));
-  const rawKey = typeof part.fields?.key === 'string' ? part.fields.key : part.fields?.key?.value;
-  const dedupeKey = origin === 'phone' && typeof rawKey === 'string' && rawKey && /^[A-Za-z0-9_-]{8,32}$/.test(rawKey)
-    ? `ph:${rawKey}` : null;
-  let stored;
-  try {
-    stored = await storeCapturedParts([part], origin, wantsAuto, dedupeKey);
-  } catch (e) {
-    req.log.error(e);
-    return reply.code(e?.status || 500).send({ error: e?.status ? e.message : 'failed to store capture' });
-  }
-  const first = stored[0] || {};
-  return reply.send({ id: first.id, file: first.file, ...(first.duplicate ? { duplicate: true } : {}) });
-});
-
-app.post('/share', { bodyLimit: UPLOAD_BODY_LIMIT }, async (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  if (!photoBucket.allow(req.ip)) return reply.code(429).send({ error: 'too many uploads, slow down' });
-  const fields = {};
-  const stored = [];
-  try {
-    for await (const part of req.parts()) {
-      if (part.filename) {
-        stored.push(...await storeCapturedParts([part], 'phone', settings.autoPaste));
-      } else {
-        fields[part.fieldname] = String(part.value ?? '');
-      }
-    }
-  } catch (e) {
-    try { req.raw.resume(); } catch {}
-    for (const s of stored) {
-      try { const cap = stmts.getCapture.get(s.id); if (cap) await removeCaptureRow(cap); } catch {}
-    }
-    console.error('share:', e?.message || e);
-    return reply.code(303).redirect('/phone?shared=error');
-  }
-  try {
-    const bodyText = (fields.text || fields.title || fields.url || '').trim().slice(0, 10000);
-    if (bodyText) {
-      stmts.insertText.run(bodyText, 'phone', 'text');
-      stmts.trimTexts.run();
-      notify('text');
-    }
-    return reply.code(303).redirect('/phone?shared=1');
-  } catch (e) {
-    console.error('share:', e?.message || e);
-    return reply.code(303).redirect('/phone?shared=error');
-  }
-});
-
-app.get('/api/stats', () => {
-  let latest = null;
-  let outboxSum = 0;
-  const phoneList = [];
-  for (const [ip, p] of phones) {
-    outboxSum += p.outbox;
-    const entry = { ip, lastSeen: p.lastSeen, outbox: p.outbox };
-    phoneList.push(entry);
-    if (!latest || p.lastSeen > latest.lastSeen) latest = entry;
-  }
-  return {
-    version: PP_VERSION,
-    count: stmts.countCaptures.get().c,
-    bytes: bytes.total,
-    cap: (settings.storageCapMB || defaultMaxStoreMB) * 1024 * 1024,
-    files: { count: stmts.countFiles.get().c, bytes: bytes.files },
-    mediaDir: mediaBase,
-    phoneLastSeen: latest?.lastSeen ?? 0,
-    phoneOnline: !phoneSseClosed && !!latest && Date.now() - latest.lastSeen < PHONE_ONLINE_MS,
-    phoneOutbox: Math.min(999, outboxSum),
-    phoneIp: latest?.ip || null,
-    phoneCount: phoneList.length,
-    phones: phoneList,
-    sseClients: sseClients.size,
-    recent: [
-      ...stmts.listCaptures.all(3).map(c => ({
-        kind: 'capture', id: c.id, label: 'Capture',
-        dir: c.origin === 'pc' ? 'pc' : 'phone', at: c.created_at,
-      })),
-      ...stmts.listFiles.all(3).map(f => ({
-        kind: 'file', id: f.id, label: f.name,
-        dir: f.dir === 'phone' ? 'phone' : 'pc', at: f.created_at,
-      })),
-    ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, 3),
-  };
-});
-
-app.post('/api/open-latest', (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  notify('open-latest'); return { ok: true };
-});
-
-const SETTINGS_FILE = path.join(DATA, 'settings.json');
-const settings = { version: 1, autoPaste: false, autoCleanup: false, filesToInbox: true, mediaDir: null, qualityReduce: false, qualityLevel: 80, storageCapMB: null, retentionDays: 0, inboxDir: null, browser: 'default' };
-try {
-  const loaded = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
-  if (Number.isFinite(loaded?.version) && loaded.version >= 1) settings.version = loaded.version;
-  for (const k of ['autoPaste', 'autoCleanup', 'filesToInbox', 'qualityReduce']) {
-    if (typeof loaded?.[k] === 'boolean') settings[k] = loaded[k];
-  }
-  if (typeof loaded?.mediaDir === 'string' || loaded?.mediaDir === null) settings.mediaDir = loaded.mediaDir;
-  if (Number.isFinite(loaded?.qualityLevel)) settings.qualityLevel = Math.min(100, Math.max(1, Math.round(loaded.qualityLevel)));
-  if (Number.isFinite(loaded?.storageCapMB)) settings.storageCapMB = loaded.storageCapMB >= 50 && loaded.storageCapMB <= 1024 * 1024 ? Math.round(loaded.storageCapMB) : null;
-  if (Number.isFinite(loaded?.retentionDays)) settings.retentionDays = Math.min(3650, Math.max(0, Math.round(loaded.retentionDays)));
-  if (typeof loaded?.inboxDir === 'string' || loaded?.inboxDir === null) settings.inboxDir = loaded.inboxDir;
-  if (typeof loaded?.browser === 'string') settings.browser = loaded.browser;
-} catch {}
-
-if (typeof settings.mediaDir === 'string' && settings.mediaDir) {
-  try {
-    const base = path.resolve(settings.mediaDir);
-    if (path.isAbsolute(base)) {
-      for (const d of Object.values(mediaDirs(base))) fs.mkdirSync(d, { recursive: true });
-      mediaBase = base;
-      ({ captures: CAPTURES, files: FILES, inbox: INBOX } = mediaDirs(mediaBase));
-    }
-  } catch (e) { console.warn('media dir adopt failed, using default:', e?.message || e); }
-}
-
-if (typeof settings.inboxDir === 'string' && settings.inboxDir) {
-  try {
-    const base = path.resolve(settings.inboxDir);
-    if (path.isAbsolute(base)) { fs.mkdirSync(base, { recursive: true }); settings.inboxDir = base; }
-    else settings.inboxDir = null;
-  } catch (e) { console.warn('inbox dir adopt failed, using default:', e?.message || e); settings.inboxDir = null; }
-}
-
-function settingsBundle() {
-  return {
-    version: PP_VERSION,
-    autoPaste: { auto: settings.autoPaste },
-    autoCleanup: { on: settings.autoCleanup, cap: (settings.storageCapMB || defaultMaxStoreMB) * 1024 * 1024, used: bytes.total },
-    filesInbox: { on: settings.filesToInbox },
-    quality: { on: settings.qualityReduce, level: settings.qualityLevel, maxPixels: MAX_PIXELS },
-    storageCap: { capMb: settings.storageCapMB || defaultMaxStoreMB, custom: settings.storageCapMB != null },
-    retention: { days: settings.retentionDays },
-    inboxDir: { path: settings.inboxDir, def: currentMediaBase().inbox },
-    mediaDir: { path: currentMediaBase().base, def: DATA },
-    browser: settings.browser,
-  };
-}
-
-function saveSettings() {
-  try {
-    const tmp = `${SETTINGS_FILE}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(settings));
-    fs.renameSync(tmp, SETTINGS_FILE);
-  } catch (e) {
-    console.warn('settings save failed:', e?.message || e);
-  }
-  notify('settings', settingsBundle());
-}
-
-function setAutoPaste(on) {
-  settings.autoPaste = !!on;
-  saveSettings();
-}
-app.get('/api/autopaste', () => ({ auto: settings.autoPaste }));
-app.post('/api/autopaste', (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  const b = req.body || {};
-  if (typeof b.auto !== 'boolean') return reply.code(400).send({ error: 'auto must be a boolean' });
-  setAutoPaste(b.auto);
-  return { ok: true, auto: settings.autoPaste };
+let defaultMaxStoreMB = 2048;
+const {
+  settings, settingsFile, saveSettings, registerRoutes: registerSettingsRoutes,
+} = initSettings({
+  dataDir: DATA,
+  adoptMediaDir,
+  currentMediaBase,
+  notify,
+  bytes,
+  ppVersion: PP_VERSION,
+  maxPixels: MAX_PIXELS,
+  getDefaultMaxStoreMB: () => defaultMaxStoreMB,
 });
 
 const autoCaptureIds = new Set();
-const {
-  runRetentionSweep, runAutoCleanup, runFileCleanup, removeCaptureRow, removeFileRow,
-  defaultMaxStoreMB,
-} = registerCleanup(app, {
+const cleanup = registerCleanup(app, {
   settings, stmts, db, bytes, notify, saveSettings, csrfSafe, logEvent, autoCaptureIds, paths: currentMediaBase,
 });
+const { runRetentionSweep, runAutoCleanup, runFileCleanup, removeCaptureRow, removeFileRow } = cleanup;
+defaultMaxStoreMB = cleanup.defaultMaxStoreMB;
+
 registerMediaDir(app, { settings, saveSettings, csrfSafe, DATA, adoptMediaDir, currentMediaBase });
-registerBackup(app, { csrfSafe, DATA, SETTINGS_FILE, currentMediaBase, db });
+registerBackup(app, { csrfSafe, DATA, SETTINGS_FILE: settingsFile, currentMediaBase, db });
 const { openHarness } = registerBrowser(app, { settings, saveSettings, csrfSafe });
 
 const store = createStore({
@@ -660,11 +462,12 @@ const store = createStore({
   browserPresent: sseHub.hasBrowser,
   cleanup: { runRetentionSweep, runAutoCleanup },
 });
-const { bootSweep, storeCapturedParts, thumbFor } = store;
+const { bootSweep, storeCapturedParts, thumbFor, rotateCapture, getCapturesRev } = store;
 
 registerCaptures(app, {
-  stmts, db, bytes, notify, csrfSafe, autoCaptureIds, paths: currentMediaBase,
+  settings, stmts, db, bytes, notify, csrfSafe, autoCaptureIds, paths: currentMediaBase,
   cleanup: { removeCaptureRow },
+  photoBucket, uploadBodyLimit: UPLOAD_BODY_LIMIT, storeCapturedParts, rotateCapture, getCapturesRev,
 });
 
 registerFiles(app, {
@@ -672,104 +475,20 @@ registerFiles(app, {
   cleanup: { runFileCleanup, removeFileRow }, streamFile,
 });
 
-app.get('/api/quality', () => ({ on: settings.qualityReduce, level: settings.qualityLevel, maxPixels: MAX_PIXELS }));
-app.post('/api/quality', (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  const b = req.body || {};
-  if (typeof b.on !== 'boolean') return reply.code(400).send({ error: 'on must be a boolean' });
-  const lvl = Math.round(Number(b.level));
-  if (b.level != null && (!Number.isFinite(lvl) || lvl < 1 || lvl > 100))
-    return reply.code(400).send({ error: 'level must be 1-100' });
-  settings.qualityReduce = b.on;
-  if (b.level != null) settings.qualityLevel = lvl;
-  saveSettings();
-  return { ok: true, on: settings.qualityReduce, level: settings.qualityLevel };
+registerText(app, { stmts, notify, csrfSafe });
+
+registerSettingsRoutes(app, {
+  csrfSafe, stmts, phones, sseClients, phoneOnlineMs: PHONE_ONLINE_MS,
+  isPhoneSseClosed: () => phoneSseClosed, trackPhone, scheme: SCHEME, port: PORT,
 });
-
-app.get('/api/files-inbox', () => ({ on: settings.filesToInbox }));
-app.get('/api/settings', () => settingsBundle());
-
-app.post('/api/text', async (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  const b = req.body || {};
-  const body = String(b.body || '').slice(0, 10000).trim();
-  if (!body) return reply.code(400).send({ error: 'empty text' });
-  const source = b.source === 'phone' ? 'phone' : 'pc';
-  const isMediaLink = b.kind === 'media' || /^https?:\/\/[^/]+\/media\//.test(body);
-  const kind = isMediaLink ? 'media' : 'text';
-  const info = stmts.insertText.run(body, source, kind);
-  if (kind === 'media') stmts.trimMediaTexts.run();
-  stmts.trimTexts.run();
-  notify('text');
-  return { id: info.lastInsertRowid, ok: true };
-});
-
-app.get('/api/text', (req) => {
-  const source = req.query.source === 'phone' || req.query.source === 'pc' ? req.query.source : null;
-  const limit = Math.min(20, Math.max(1, parseInt(req.query.limit, 10) || 10));
-  if (source) return stmts.listTexts.all(source, limit);
-  return stmts.listAllTexts.all(limit);
-});
-
-app.delete('/api/text', async (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  const source = req.query.source === 'phone' || req.query.source === 'pc' ? req.query.source : null;
-  const info = source ? stmts.deleteTextsBySource.run(source) : stmts.deleteAllTexts.run();
-  notify('text');
-  return { ok: true, removed: info.changes };
-});
-
-app.delete('/api/text/:id', async (req, reply) => {
-  if (!csrfSafe(req)) return reply.code(403).send({ error: 'cross-site request blocked' });
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) return reply.code(400).send({ error: 'bad id' });
-  const info = stmts.deleteTextById.run(id);
-  if (info.changes) notify('text');
-  return { ok: true, removed: info.changes };
-});
-
-const qrCache = new Map();
-app.get('/qr.png', async (req, reply) => {
-  let ip = lanIPs()[0] || 'localhost';
-  const want = String(req.query.ip || '');
-  if (lanIPs().includes(want)) ip = want;
-  let p = qrCache.get(ip);
-  if (!p) {
-    const url = `${SCHEME}://${ip}:${PORT}/phone`;
-    p = QRCode.toBuffer(url, { width: 320, margin: 1 })
-      .then(buf => {
-        while (qrCache.size > 12) {
-          const droppable = [...qrCache.keys()].filter(k => k !== ip);
-          if (!droppable.length) break;
-          qrCache.delete(droppable[0]);
-        }
-        return buf;
-      })
-      .catch(e => { qrCache.delete(ip); throw e; });
-    qrCache.set(ip, p);
-  }
-  try {
-    reply
-      .header('Cache-Control', 'no-store')
-      .type('image/png')
-      .send(await p);
-  } catch { qrCache.delete(ip); reply.code(500).send({ error: 'qr failed' }); }
-});
-
-app.get('/api/lan', (req) => {
-  if (req.query.device === 'phone') {
-    const n = parseInt(req.query.outbox, 10);
-    if (trackPhone(req.ip, Number.isFinite(n) && n >= 0 ? n : undefined)) notify('phone');
-  }
-  return { ips: lanIPs(), port: PORT, scheme: SCHEME };
-});
-
-app.get('/api/version', () => ({ version: PP_VERSION }));
 
 app.get('/phone', async (_req, reply) => {
   const html = phoneHtml ??= await fsp.readFile(path.join(ROOT, 'public', 'phone.html'), 'utf8');
   const stamped = html
     .replace('/phone.css?v=__PP_VERSION__', `/phone.css?v=${assetStamp('phone.css')}`)
+    .replace('/shared.js?v=__PP_VERSION__', `/shared.js?v=${assetStamp('shared.js')}`)
+    .replace('/phone-viewer.js?v=__PP_VERSION__', `/phone-viewer.js?v=${assetStamp('phone-viewer.js')}`)
+    .replace('/phone-files.js?v=__PP_VERSION__', `/phone-files.js?v=${assetStamp('phone-files.js')}`)
     .replace('/phone.js?v=__PP_VERSION__', `/phone.js?v=${assetStamp('phone.js')}`);
   reply.header('Cache-Control', 'no-store');
   return reply.type('text/html').send(stamped);
@@ -788,12 +507,6 @@ app.listen({ port: PORT, host: '0.0.0.0' }).then(() => {
   }
 }).catch(e => { console.error('LISTEN FAILED:', e); process.exit(1); });
 
-function releaseLock() {
-  try {
-    const lock = readLock();
-    if (lock && lock.pid === process.pid) fs.rmSync(LOCK_FILE, { force: true });
-  } catch {}
-}
 process.on('exit', releaseLock);
 for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => {
   console.log('\nShutting down...');

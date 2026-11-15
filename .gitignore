@@ -29,3 +29,7 @@ dev/*.png
 
 # backup artifacts (a misconfigured destination must never end up committed)
 proofpipe-backup-*.zip
+
+# container sandbox lockfile (project uses npm/package.json)
+bun.lock
+

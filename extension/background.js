@@ -235,6 +235,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         return sendResponse({ ok: true });
       }
+      if (msg.type === 'deleteCapture') {
+        const id = Number(msg.id);
+        if (!Number.isInteger(id) || id <= 0) return sendResponse({ error: 'invalid capture id' });
+        return sendResponse(await (await serverFetch(`/api/captures/${id}`, { method: 'DELETE' })).json());
+      }
+      if (msg.type === 'deleteText') {
+        const id = Number(msg.id);
+        if (!Number.isInteger(id) || id <= 0) return sendResponse({ error: 'invalid text id' });
+        return sendResponse(await (await serverFetch(`/api/text/${id}`, { method: 'DELETE' })).json());
+      }
+      if (msg.type === 'openWorkbench') {
+        const raw = typeof msg.url === 'string' && /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(msg.url) ? msg.url : null;
+        const host = raw || goodHost || (await ensureHost().catch(() => null)) || `http://127.0.0.1:${DEFAULT_PORT}`;
+        const url = host.endsWith('/') ? host : `${host}/`;
+        await chrome.tabs.create({ url });
+        return sendResponse({ ok: true, url });
+      }
       sendResponse({ error: 'unknown message' });
     } catch (e) {
       sendResponse({ error: String((e && e.message) || e) });
@@ -263,12 +280,7 @@ async function postText(body) {
 }
 
 async function postCaptureDataUrl(dataUrl) {
-  const blob = await (await fetch(dataUrl)).blob();
-  if (!blob || !blob.size) throw new Error('empty screenshot');
-  const ext = ((blob.type || '').split('/')[1] || 'png').replace('jpeg', 'jpg');
-  const fd = new FormData();
-  fd.append('source', 'pc');
-  fd.append('photo', blob, `tab-capture.${ext}`);
+  const fd = await PPDiscovery.dataUrlToUploadForm(dataUrl);
   return (await serverFetch('/upload', {
     method: 'POST',
     body: fd,

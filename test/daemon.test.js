@@ -59,7 +59,7 @@ test('rotateLogIfNeeded rotates oversize log to .1 backup and tailText returns t
 test('buildAutostartSpec covers win32 registry, linux XDG desktop, and darwin launchd', () => {
   const win = buildAutostartSpec({ platform: 'win32', root: APP });
   assert.equal(win.kind, 'registry');
-  assert.match(win.command, /scripts[\\/]tray\.ps1/);
+  assert.match(win.command, /wscript\.exe\s+".*ProofPipe\.vbs"/);
 
   const xdg = buildAutostartSpec({
     platform: 'linux',
@@ -85,7 +85,11 @@ test('buildAutostartSpec covers win32 registry, linux XDG desktop, and darwin la
   assert.match(darwin.content, /proof&amp;pipe/, 'XML special characters in paths are escaped');
 });
 
-test('tray.ps1 declares single-instance mutex and WinForms tooltip cap', () => {
+test('ProofPipe.vbs & tray.ps1 declare silent zero-CLI launch and WinForms tooltip cap', () => {
+  const vbs = fs.readFileSync(path.join(APP, 'ProofPipe.vbs'), 'utf8');
+  assert.match(vbs, /scripts\\tray\.ps1/);
+  assert.match(vbs, /\.Run\s+cmd,\s*0,\s*False/);
+
   const ps1 = fs.readFileSync(path.join(APP, 'scripts', 'tray.ps1'), 'utf8');
   assert.match(ps1, /Local\\ProofPipeWindowsTray/);
   assert.match(ps1, /System\.Windows\.Forms\.NotifyIcon/);

@@ -65,7 +65,7 @@ export function fileServeHeaders(storedFile, displayName) {
   return { contentType: inlineMime || 'application/octet-stream', disposition };
 }
 
-export const MEDIA_MIME = {
+const MEDIA_MIME = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
   '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif',
   '.tiff': 'image/tiff', '.heic': 'image/heic', '.heif': 'image/heic',

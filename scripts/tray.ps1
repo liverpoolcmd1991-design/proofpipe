@@ -63,8 +63,11 @@ function Fetch-Json {
   }
 }
 
-# Ensure the background server is started cleanly
-Invoke-DaemonHidden @('start')
+# Ensure dependencies exist before spawning headless daemon
+$HasDeps = Test-Path (Join-Path $Root 'node_modules')
+if ($HasDeps) {
+  Invoke-DaemonHidden @('start')
+}
 
 $script:WebUrl = "${Scheme}://localhost:${Port}"
 $script:PhoneUrl = $null

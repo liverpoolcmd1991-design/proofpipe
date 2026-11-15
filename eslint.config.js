@@ -14,22 +14,32 @@ import globals from 'globals';
 // declared here — no-undef then guards every OTHER undefined identifier, which
 // is how load-order typos get caught before a browser ever sees them.
 const CROSS_SCRIPT = {
+  PPShared: 'readonly',     // public/shared.js — used by app.js + phone.js + phone-*.js
+  PP_RELEASES: 'readonly',  // public/releases.js — used by app.js
+  PPPhoneViewer: 'readonly', // public/phone-viewer.js — used by phone.js
+  PPPhoneFiles: 'readonly',  // public/phone-files.js — used by phone.js
   PPQueue: 'readonly',      // public/queue.js — used by phone.js
   toPng: 'readonly',        // public/toPng.js — used by app.js + extension pages
   PPDiscovery: 'readonly',  // extension/discovery.js — background/offscreen/popup/content
   PPPasteLogic: 'readonly', // extension/paste-logic.js — content.js
   PPBrowserTarget: 'readonly', // extension/browser-target.js — background/offscreen
   PPFiles: 'readonly',      // extension/files.js — background/popup/content
+  PPTrayUI: 'readonly',     // extension/tray-ui.js — content.js
 };
 
 // A file that DEFINES one of the cross-script bindings must not have it
 // declared as an external global in its own block (its top-level `const`
 // would trip no-redeclare against the declaration above).
 const DEFINES = {
+  'public/shared.js': { PPShared: 'off' },
+  'public/releases.js': { PP_RELEASES: 'off' },
+  'public/phone-viewer.js': { PPPhoneViewer: 'off' },
+  'public/phone-files.js': { PPPhoneFiles: 'off' },
   'extension/discovery.js': { PPDiscovery: 'off' },
   'extension/paste-logic.js': { PPPasteLogic: 'off' },
   'extension/files.js': { PPFiles: 'off' },
   'extension/browser-target.js': { PPBrowserTarget: 'off' },
+  'extension/tray-ui.js': { PPTrayUI: 'off' },
   'extension/toPng.js': { toPng: 'off' },
 };
 
@@ -48,12 +58,12 @@ const NO_UNUSED = {
 export default [
   { ignores: ['**/node_modules/**', '**/data/**', '.git/**', 'public/icons/**'] },
 
-  // Node ESM: server + its extracted modules + the test suites (scripts/ too).
+  // Node ESM: server + its extracted modules + the test suites + dev/scripts.
   // scripts/*.cjs is CommonJS but lints fine as a script — it MUST stay in a
   // glob (it's loaded via --require by npm start, so an unchecked edit would
   // otherwise surface only as a runtime crash).
   {
-    files: ['server.js', 'server/*.js', 'scripts/*.js', 'scripts/*.cjs', 'test/*.js'],
+    files: ['server.js', 'server/*.js', 'scripts/*.js', 'scripts/*.cjs', 'dev/*.mjs', 'test/*.js'],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 'latest',
@@ -73,7 +83,7 @@ export default [
 
   // Browser classic scripts
   {
-    files: ['public/app.js', 'public/phone.js'],
+    files: ['public/shared.js', 'public/releases.js', 'public/app.js', 'public/phone-viewer.js', 'public/phone-files.js', 'public/phone.js'],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 'latest',

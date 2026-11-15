@@ -1,205 +1,6 @@
 const $ = s => document.querySelector(s);
 
-const RELEASES = [
-  {
-    version: 'v1.24.0',
-    date: '2026-11',
-    headline: 'Live Phone XHR Progress, Two-Way Extension Quick Send & Background Daemon',
-    changes: [
-      {
-        scope: 'phone',
-        title: 'Real byte-level upload progress for photos',
-        detail: 'Upgraded photo uploads to XMLHttpRequest with xhr.upload.onprogress tracking so single and concurrent bursts stream real-time percentages into the Liquid Glass status wave.',
-      },
-      {
-        scope: 'extension',
-        title: 'Two-way Quick Send, tab screenshot & Liquid Glass UI',
-        detail: 'Added an inline note/URL composer, one-click Tab Link sender, and visible-tab Screenshot capture to the extension popup, alongside dark Liquid Glass styling for the popup, in-page tray, and page toasts.',
-      },
-      {
-        scope: 'server',
-        title: 'Cross-platform background daemon CLI & Windows tray launcher',
-        detail: 'Added scripts/daemon.js (start, stop, restart, status, logs, autostart) and a zero-dependency Windows system tray monitor (scripts/tray.ps1) wired into ProofPipe.bat.',
-      },
-    ],
-  },
-  {
-    version: 'v1.23.0',
-    date: '2026-11',
-    headline: 'Liquid Glass UX Overhaul, Safe Deletions, Two-Way Sync & Pre-Compiled SQL',
-    changes: [
-      {
-        scope: 'server',
-        title: 'Safe destructive actions, Undo snackbar & live XHR upload progress',
-        detail: 'Added a confirmation modal for bulk wipes, a 5-second Undo snackbar for single deletions, full-window drag-and-drop overlay, hover photo actions, and live byte-level upload progress on the PC workbench.',
-      },
-      {
-        scope: 'phone',
-        title: 'Two-way capture gallery sync & full-screen text composer',
-        detail: 'PC-origin captures now appear automatically in the phone gallery with a PC badge, accompanied by a labeled From your PC inbox strip and a minimal full-screen text editor.',
-      },
-      {
-        scope: 'extension',
-        title: 'Liquid Glass extension popup & collapsible advanced drawer',
-        detail: 'Redesigned the Chrome extension popup with translucent glass cards, segmented pill tabs, and a collapsible drawer for port override and site button controls.',
-      },
-    ],
-  },
-  {
-    version: 'v1.22.0',
-    date: '2026-10',
-    headline: '64 MP Full-Resolution Pipeline & Lossless Clipboard Encoding',
-    changes: [
-      {
-        scope: 'server',
-        title: '64 MP capture ceiling',
-        detail: 'Raised the image probe limit to 64 MP (MAX_PIXELS) so 48 MP and 50 MP phone photos upload byte-for-byte without downscaling.',
-      },
-      {
-        scope: 'phone',
-        title: 'Resolution-preserving HEIC conversion',
-        detail: 'Decoupled HEIC-to-JPEG format conversion from the optional 4096 px quality-reduction clamp so full-sensor photos keep every pixel when quality reduction is off.',
-      },
-      {
-        scope: 'extension',
-        title: 'Full-resolution PNG Worker encoding',
-        detail: 'Removed the 8192 px clipboard clamp in toPng.js so tall scrolling screenshots copy 1:1 up to physical browser canvas limits.',
-      },
-    ],
-  },
-  {
-    version: 'v1.21.0',
-    date: '2026-09',
-    headline: 'Bulk File Operations, Phone Sorting & In-Flight Decode Guards',
-    changes: [
-      {
-        scope: 'server',
-        title: 'In-flight sharp decode coordination',
-        detail: 'Added beginFileRead and awaitFileIdle synchronization so deleting a capture immediately after upload waits for background thumbnail generation before unlinking.',
-      },
-      {
-        scope: 'server',
-        title: 'Batch file deletion',
-        detail: 'Extended DELETE /api/files to accept an { ids } array and broadcast a single coalesced file-deleted SSE event.',
-      },
-      {
-        scope: 'phone',
-        title: 'Unified sort order & viewer rotation',
-        detail: 'Added Newest, Oldest, and Name sorting across phone lanes plus 90-degree rotation inside the mobile pinch-zoom viewer.',
-      },
-    ],
-  },
-  {
-    version: 'v1.20.0',
-    date: '2026-08',
-    headline: 'Full-Resolution Tray Dragging & Keyboard Direct Paste',
-    changes: [
-      {
-        scope: 'extension',
-        title: 'Byte-identical drag payloads from the p tray',
-        detail: 'Upgraded hovered tray tiles to their stored original blob before dragstart and attached real MIME types so dragging into AI chats transfers untouched originals.',
-      },
-      {
-        scope: 'extension',
-        title: 'Ctrl/Cmd+Enter direct chat injection',
-        detail: 'Added keyboard shortcut support in the in-page tray to run the staged synthetic paste pipeline directly into the page editor.',
-      },
-      {
-        scope: 'extension',
-        title: 'Largest-visible composer targeting',
-        detail: 'Improved editor discovery to prefer the focused element or the largest visible contenteditable/textarea composer rather than the last DOM node.',
-      },
-    ],
-  },
-  {
-    version: 'v1.18.0',
-    date: '2026-07',
-    headline: 'Browser-Targeted Auto-Paste & Pinned Extension Origin',
-    changes: [
-      {
-        scope: 'server',
-        title: 'Pinned chrome-extension CSRF origin',
-        detail: 'Derived the exact 32-character extension ID from extension/manifest.json key so only the official ProofPipe extension passes mutation checks.',
-      },
-      {
-        scope: 'extension',
-        title: 'Multi-browser autoTarget routing',
-        detail: 'Added browser-target matching so Chrome and Edge extensions only auto-paste when selected, with automatic fallback when the target browser has no active SSE client.',
-      },
-      {
-        scope: 'server',
-        title: 'Aggregated /api/settings bundle',
-        detail: 'Combined all server settings into a single GET /api/settings payload and SSE broadcast frame.',
-      },
-    ],
-  },
-  {
-    version: 'v1.15.0',
-    date: '2026-05',
-    headline: 'Bidirectional File Transfers, Auto-Inbox & ZIP Backups',
-    changes: [
-      {
-        scope: 'server',
-        title: '1 GB file transfer store & HTTP Range streaming',
-        detail: 'Added /api/files and /file/:id with RFC 7233 byte-range support, dedicated token-bucket rate limiting, and automatic saving of phone files into data/inbox/.',
-      },
-      {
-        scope: 'server',
-        title: 'Live media directory relocation & transactional backups',
-        detail: 'Added /api/media-dir for moving captures/files across drives with rollback on failure, and /api/backup for WAL-checkpointed archive exports.',
-      },
-      {
-        scope: 'phone',
-        title: 'Swipe-to-delete with deferred Undo snackbar',
-        detail: 'Added downward swipe gestures on phone text and file chips with a 6-second undo window before committing server deletion.',
-      },
-    ],
-  },
-  {
-    version: 'v1.10.0',
-    date: '2026-03',
-    headline: 'Idempotent Offline Queues & Automatic Port Discovery',
-    changes: [
-      {
-        scope: 'phone',
-        title: 'IndexedDB offline queues with deduplication keys',
-        detail: 'Queued photos, files, and texts in IndexedDB when offline and attached client-generated dedupe_key tokens so retried uploads never create duplicates.',
-      },
-      {
-        scope: 'extension',
-        title: 'Two-stage loopback port discovery',
-        detail: 'Added PPDiscovery.probeHosts to scan candidate ports in parallel and verify /api/version so custom PORT setups work without manual configuration.',
-      },
-      {
-        scope: 'server',
-        title: 'Age-based retention & 80% storage cap sweeps',
-        detail: 'Added configurable retention days and storage cap thresholds that trim the oldest captures automatically on schedule and on upload.',
-      },
-    ],
-  },
-  {
-    version: 'v1.0.0',
-    date: '2026-01',
-    headline: 'Initial Release: One-Tap Phone Capture to AI Chat Paste',
-    changes: [
-      {
-        scope: 'server',
-        title: 'Fastify + SQLite + sharp capture server',
-        detail: 'Built the local LAN capture server storing untouched originals in data/captures/ with background 400 px thumbnail generation and instant SSE push.',
-      },
-      {
-        scope: 'phone',
-        title: 'Installable Mobile PWA & Web Share Target',
-        detail: 'Created the /phone web app with one-tap camera shutter, two-way text chips, pinch-to-zoom gallery viewer, and Share-to-ProofPipe support.',
-      },
-      {
-        scope: 'extension',
-        title: 'MV3 offscreen SSE relay & staged synthetic paste',
-        detail: 'Built the Chromium extension with an offscreen EventSource relay and non-bubbling-first synthetic ClipboardEvent dispatch into AI chat editors.',
-      },
-    ],
-  },
-];
+const RELEASES = typeof PP_RELEASES !== 'undefined' ? PP_RELEASES : [];
 
 const SCOPE_LABELS = {
   server: 'Server',
@@ -211,10 +12,22 @@ let captures = [];
 let files = [];
 let texts = [];
 let selectedFiles = new Set();
+let selectedCaptures = new Set();
+let captureSelectMode = false;
 let captureSort = 'new';
 let captureOriginFilter = 'all';
 let compactGrid = false;
+let capturesLoaded = false;
+let filesLoaded = false;
 let lightboxIdx = -1;
+let lbZoomMode = 'fit';
+let lbScale = 1;
+let lbPanX = 0;
+let lbPanY = 0;
+let lbRotateBusy = false;
+let activeSse = null;
+let sseHadError = false;
+let connRestoreTimer = null;
 let qrHiddenByUser = false;
 let toastTimer = null;
 let settingsSaveBadgeTimer = null;
@@ -222,32 +35,128 @@ let activeReleaseCategory = 'all';
 let releaseSearchQuery = '';
 let resolvedPhoneUrl = `${location.origin}/phone`;
 
-function fmtBytes(n) {
-  const b = Number(n) || 0;
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let val = b;
-  let u = 0;
-  while (val >= 1024 && u < units.length - 1) {
-    val /= 1024;
-    u++;
-  }
-  return `${u === 0 ? val : val.toFixed(1)} ${units[u]}`;
+const fmtBytes = PPShared.fmtBytes;
+const fmtTime = iso => PPShared.fmtClock(iso) || (iso || '');
+
+function inferNotifTone(msg = '') {
+  const s = String(msg).toLowerCase();
+  if (/could not|failed|blocked|unavailable|offline|error/.test(s)) return 'err';
+  if (/retry|limit|warning|lost|offline/.test(s)) return 'warn';
+  return 'ok';
 }
 
-function fmtTime(iso) {
-  if (!iso) return '';
-  const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function attachNotifSwipe(el, onDismiss, { onHoldStart, onHoldEnd } = {}) {
+  if (!el || el.dataset.swipeWired === '1') return;
+  el.dataset.swipeWired = '1';
+  let drag = null;
+  let dismissTimer = 0;
+
+  const resetVisual = () => {
+    el.classList.remove('swiping');
+    el.style.transform = '';
+    el.style.opacity = '';
+  };
+
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.target.closest('button')) return;
+    clearTimeout(dismissTimer);
+    onHoldStart && onHoldStart();
+    drag = {
+      id: e.pointerId,
+      x0: e.clientX,
+      y0: e.clientY,
+      t0: performance.now(),
+      dx: 0,
+      dy: 0,
+      moved: false,
+    };
+    el.classList.add('swiping');
+    try { el.setPointerCapture(e.pointerId); } catch {}
+  });
+
+  el.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const dx = e.clientX - drag.x0;
+    const dy = Math.max(-18, e.clientY - drag.y0);
+    if (!drag.moved && Math.hypot(dx, dy) < 6) return;
+    drag.moved = true;
+    drag.dx = dx;
+    drag.dy = dy;
+    const dist = Math.hypot(dx, Math.max(0, dy));
+    el.style.transform = `translate3d(${dx.toFixed(1)}px, ${dy.toFixed(1)}px, 0)`;
+    el.style.opacity = String(Math.max(0.18, 1 - dist / 140));
+  });
+
+  const finish = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    el.classList.remove('swiping');
+    try { el.releasePointerCapture(e.pointerId); } catch {}
+    const dt = Math.max(1, performance.now() - d.t0);
+    const vx = d.dx / dt;
+    const vy = d.dy / dt;
+    const commit = d.moved && (
+      Math.abs(d.dx) > 54
+      || d.dy > 42
+      || (Math.abs(vx) > 0.42 && Math.abs(d.dx) > 18)
+      || (vy > 0.42 && d.dy > 16)
+    );
+    if (commit) {
+      const tx = Math.abs(d.dx) >= Math.abs(d.dy) ? (d.dx >= 0 ? 160 : -160) : d.dx * 1.4;
+      const ty = d.dy > 18 ? Math.max(48, d.dy * 1.8) : d.dy;
+      el.style.transform = `translate3d(${tx.toFixed(1)}px, ${ty.toFixed(1)}px, 0)`;
+      el.style.opacity = '0';
+      dismissTimer = setTimeout(() => {
+        resetVisual();
+        onDismiss();
+      }, 150);
+    } else {
+      resetVisual();
+      onHoldEnd && onHoldEnd();
+    }
+  };
+
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', finish);
+  el.addEventListener('mouseenter', () => { if (!drag) onHoldStart && onHoldStart(); });
+  el.addEventListener('mouseleave', () => { if (!drag) onHoldEnd && onHoldEnd(); });
 }
 
-function showToast(msg) {
+function dismissToast() {
   const el = $('#toast');
   if (!el) return;
+  clearTimeout(toastTimer);
+  toastTimer = null;
+  el.classList.remove('swiping');
+  el.style.transform = '';
+  el.style.opacity = '';
+  el.classList.add('hidden');
+}
+
+function scheduleToastHide(ms = 2600) {
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(dismissToast, ms);
+}
+
+function showToast(msg, opts = {}) {
+  const el = $('#toast');
+  if (!el) return;
+  const tone = opts.tone || inferNotifTone(msg);
+  const duration = opts.duration || (tone === 'err' ? 3600 : 2600);
+  attachNotifSwipe(el, dismissToast, {
+    onHoldStart: () => clearTimeout(toastTimer),
+    onHoldEnd: () => { if (!el.classList.contains('hidden')) scheduleToastHide(1800); },
+  });
+  el.dataset.tone = tone;
+  el.dataset.duration = String(duration);
   el.textContent = msg;
+  el.classList.remove('swiping');
+  el.style.transform = '';
+  el.style.opacity = '';
   el.classList.remove('hidden');
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), 2400);
+  scheduleToastHide(duration);
 }
 
 function showSettingsSaved(label = 'Saved ✓') {
@@ -259,11 +168,64 @@ function showSettingsSaved(label = 'Saved ✓') {
   settingsSaveBadgeTimer = setTimeout(() => pill.classList.add('hidden'), 2000);
 }
 
+// ---------- Modal Focus Trapping Stack ----------
+const modalFocusStack = [];
+
+function getModalFocusables(modal) {
+  if (!modal) return [];
+  const sel = 'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+  return [...modal.querySelectorAll(sel)].filter(el => {
+    if (el.getAttribute('aria-hidden') === 'true') return false;
+    let cur = el;
+    while (cur && cur !== modal) {
+      if (cur.classList?.contains('hidden')) return false;
+      cur = cur.parentElement;
+    }
+    return true;
+  });
+}
+
+function activeFocusModal() {
+  for (let i = modalFocusStack.length - 1; i >= 0; i--) {
+    const entry = modalFocusStack[i];
+    if (entry.modal && !entry.modal.classList.contains('hidden')) return entry;
+  }
+  return null;
+}
+
+function activateModalFocus(modal, initialEl = null) {
+  if (!modal) return;
+  const existingIdx = modalFocusStack.findIndex(e => e.modal === modal);
+  const opener = existingIdx !== -1
+    ? modalFocusStack[existingIdx].opener
+    : (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  if (existingIdx !== -1) modalFocusStack.splice(existingIdx, 1);
+  modalFocusStack.push({ modal, opener });
+  const focusables = getModalFocusables(modal);
+  const target = (initialEl && focusables.includes(initialEl)) ? initialEl : (focusables[0] || modal);
+  if (target === modal && !modal.hasAttribute('tabindex')) modal.tabIndex = -1;
+  target?.focus?.();
+}
+
+function deactivateModalFocus(modal) {
+  if (!modal) return;
+  const idx = modalFocusStack.findIndex(e => e.modal === modal);
+  if (idx === -1) return;
+  const [entry] = modalFocusStack.splice(idx, 1);
+  const opener = entry?.opener;
+  if (opener && opener.isConnected && !opener.disabled && !opener.closest('.hidden')) {
+    opener.focus();
+  }
+}
+
 // ---------- PC Confirmation Modal (prevents accidental nuclear wipes) ----------
 let confirmResolver = null;
 function closePcConfirm(answer = false) {
   const bd = $('#pc-confirm-backdrop');
-  if (bd) bd.classList.add('hidden');
+  if (bd) {
+    bd.classList.add('hidden');
+    deactivateModalFocus(bd);
+  }
   if (confirmResolver) {
     const res = confirmResolver;
     confirmResolver = null;
@@ -288,7 +250,7 @@ function pcConfirm({ title, body = '', ok = 'Delete' }) {
   }
   okBtn.textContent = ok;
   bd.classList.remove('hidden');
-  cancelBtn.focus();
+  activateModalFocus(bd, cancelBtn);
   return new Promise(resolve => {
     confirmResolver = resolve;
   });
@@ -302,7 +264,13 @@ function flushPcUndo() {
   const { timer, perform } = pcUndoState;
   clearTimeout(timer);
   pcUndoState = null;
-  $('#pc-undo-toast')?.classList.add('hidden');
+  const bar = $('#pc-undo-toast');
+  if (bar) {
+    bar.classList.remove('swiping');
+    bar.style.transform = '';
+    bar.style.opacity = '';
+    bar.classList.add('hidden');
+  }
   Promise.resolve().then(perform).catch(() => {});
 }
 
@@ -314,13 +282,18 @@ function startPcUndo({ msg, perform, restore }) {
     Promise.resolve().then(perform).catch(() => {});
     return;
   }
+  attachNotifSwipe(bar, flushPcUndo, {
+    onHoldStart: () => { if (pcUndoState) clearTimeout(pcUndoState.timer); },
+    onHoldEnd: () => {
+      if (pcUndoState) pcUndoState.timer = setTimeout(flushPcUndo, 4000);
+    },
+  });
   msgEl.textContent = msg;
+  bar.classList.remove('swiping');
+  bar.style.transform = '';
+  bar.style.opacity = '';
   bar.classList.remove('hidden');
-  const timer = setTimeout(() => {
-    pcUndoState = null;
-    bar.classList.add('hidden');
-    Promise.resolve().then(perform).catch(() => {});
-  }, 5000);
+  const timer = setTimeout(flushPcUndo, 5000);
   pcUndoState = { timer, perform, restore };
 }
 
@@ -355,50 +328,19 @@ function endPcTransferItem() {
   }
 }
 
-function uploadWithProgress(url, fd, name) {
+async function uploadWithProgress(url, fd, name) {
   if (!pcTransferTotal) {
     pcTransferTotal = 1;
     pcTransferDone = 0;
   }
   updatePcTransferUI(name, 0);
-
-  if (typeof XMLHttpRequest !== 'function') {
-    return fetch(url, { method: 'POST', body: fd }).finally(endPcTransferItem);
+  try {
+    return await PPShared.xhrPost(url, fd, {
+      onProgress: pct => updatePcTransferUI(name, pct),
+    });
+  } finally {
+    endPcTransferItem();
   }
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    if (xhr.upload) {
-      xhr.upload.onprogress = e => {
-        if (e.lengthComputable && e.total > 0) {
-          const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
-          updatePcTransferUI(name, pct);
-        } else {
-          updatePcTransferUI(name, -1);
-        }
-      };
-    }
-    xhr.onload = () => {
-      endPcTransferItem();
-      const ok = xhr.status >= 200 && xhr.status < 300;
-      const bodyText = xhr.responseText || '';
-      resolve({
-        ok,
-        status: xhr.status,
-        json: async () => JSON.parse(bodyText || '{}'),
-      });
-    };
-    xhr.onerror = () => {
-      endPcTransferItem();
-      reject(new Error('network error'));
-    };
-    xhr.onabort = () => {
-      endPcTransferItem();
-      reject(new Error('aborted'));
-    };
-    xhr.send(fd);
-  });
 }
 
 // Custom Liquid Glass Popover Menu logic
@@ -641,6 +583,42 @@ function filteredSortedCaptures() {
   return arr;
 }
 
+function syncCaptureSelectionUI() {
+  const grid = $('#grid');
+  const selectBtn = $('#captures-select-btn');
+  const selectAllBtn = $('#captures-select-all');
+  const delSelBtn = $('#captures-delete-selected');
+  const selCountEl = $('#captures-sel-count');
+  const visible = filteredSortedCaptures();
+  const count = selectedCaptures.size;
+  const active = captureSelectMode || count > 0;
+
+  if (grid) grid.classList.toggle('select-mode', active);
+  if (selectBtn) {
+    selectBtn.classList.toggle('hidden', captures.length === 0);
+    selectBtn.textContent = captureSelectMode ? 'Done' : 'Select';
+    selectBtn.setAttribute('aria-pressed', String(captureSelectMode));
+  }
+  if (selectAllBtn) {
+    selectAllBtn.classList.toggle('hidden', !active || visible.length === 0);
+    const allSelected = visible.length > 0 && visible.every(c => selectedCaptures.has(c.id));
+    selectAllBtn.textContent = allSelected ? 'None' : 'All';
+  }
+  if (delSelBtn && selCountEl) {
+    selCountEl.textContent = String(count);
+    delSelBtn.classList.toggle('hidden', count === 0);
+  }
+}
+
+function toggleCaptureSelected(id, tileEl, checkboxEl) {
+  if (selectedCaptures.has(id)) selectedCaptures.delete(id);
+  else selectedCaptures.add(id);
+  const selected = selectedCaptures.has(id);
+  if (tileEl) tileEl.classList.toggle('selected', selected);
+  if (checkboxEl) checkboxEl.checked = selected;
+  syncCaptureSelectionUI();
+}
+
 function renderCaptures() {
   const grid = $('#grid');
   const empty = $('#grid-empty');
@@ -649,11 +627,30 @@ function renderCaptures() {
   const clearBtn = $('#clear-captures');
   if (!grid) return;
 
+  for (const id of [...selectedCaptures]) {
+    if (!captures.some(c => c.id === id)) selectedCaptures.delete(id);
+  }
+  if (captures.length === 0) captureSelectMode = false;
+
   const list = filteredSortedCaptures();
   if (countBadge) countBadge.textContent = String(list.length);
   if (clearBtn) clearBtn.classList.toggle('hidden', captures.length === 0);
+  syncCaptureSelectionUI();
   grid.classList.toggle('compact', compactGrid);
   grid.replaceChildren();
+
+  if (!capturesLoaded) {
+    empty?.classList.add('hidden');
+    moreWrap?.classList.add('hidden');
+    for (let i = 0; i < 6; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'cap-skel';
+      sk.setAttribute('aria-hidden', 'true');
+      sk.innerHTML = '<div class="cap-skel-thumb"></div><div class="cap-skel-foot"></div>';
+      grid.appendChild(sk);
+    }
+    return;
+  }
 
   if (!list.length) {
     empty?.classList.remove('hidden');
@@ -664,15 +661,33 @@ function renderCaptures() {
   moreWrap?.classList.toggle('hidden', captures.length < 100);
 
   list.forEach((cap, idx) => {
+    const isSelected = selectedCaptures.has(cap.id);
     const tile = document.createElement('article');
-    tile.className = 'cap-tile';
+    tile.className = `cap-tile${isSelected ? ' selected' : ''}`;
     tile.dataset.id = String(cap.id);
     tile.style.animationDelay = `${Math.min(idx * 12, 120)}ms`;
 
     const thumbWrap = document.createElement('div');
     thumbWrap.className = 'cap-thumb-wrap';
+
+    const selectWrap = document.createElement('label');
+    selectWrap.className = 'cap-select-wrap';
+    selectWrap.title = `Select capture #${cap.id}`;
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'pp-check cap-check';
+    chk.checked = isSelected;
+    chk.setAttribute('aria-label', `Select capture #${cap.id}`);
+    chk.onchange = () => toggleCaptureSelected(cap.id, tile, chk);
+    selectWrap.onclick = e => e.stopPropagation();
+    selectWrap.appendChild(chk);
+
     thumbWrap.onclick = e => {
-      if (e.target.closest('.cap-hover-actions')) return;
+      if (e.target.closest('.cap-hover-actions') || e.target.closest('.cap-select-wrap')) return;
+      if (captureSelectMode || selectedCaptures.size > 0) {
+        toggleCaptureSelected(cap.id, tile, chk);
+        return;
+      }
       openLightbox(idx);
     };
 
@@ -722,7 +737,7 @@ function renderCaptures() {
     };
 
     hoverActions.append(phoneBtn, dlLink, delBtn);
-    thumbWrap.append(img, badge, hoverActions);
+    thumbWrap.append(img, badge, hoverActions, selectWrap);
 
     const footer = document.createElement('div');
     footer.className = 'cap-footer';
@@ -749,6 +764,82 @@ function renderCaptures() {
   });
 }
 
+function applyLightboxTransform() {
+  const img = $('#lightbox-img');
+  const stage = $('#lightbox-stage');
+  const zoomBtn = $('#lb-zoom');
+  if (img) {
+    img.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbScale})`;
+  }
+  if (stage) stage.classList.toggle('zoomed', lbScale > 1.01);
+  if (zoomBtn) {
+    zoomBtn.textContent = lbZoomMode === 'fit' ? 'Fit' : (lbZoomMode === '100' ? '100%' : '200%');
+  }
+}
+
+function resetLightboxView() {
+  lbZoomMode = 'fit';
+  lbScale = 1;
+  lbPanX = 0;
+  lbPanY = 0;
+  applyLightboxTransform();
+}
+
+function setLightboxZoomMode(mode) {
+  const img = $('#lightbox-img');
+  if (mode === 'fit') {
+    resetLightboxView();
+    return;
+  }
+  const natW = img?.naturalWidth || 0;
+  const renW = img?.clientWidth || 0;
+  const ratio = (natW > 0 && renW > 0) ? Math.max(1.5, natW / renW) : 1.75;
+  lbZoomMode = mode;
+  lbScale = mode === '200' ? Math.min(4, Math.max(2.2, ratio * 2)) : Math.min(3.5, ratio);
+  lbPanX = 0;
+  lbPanY = 0;
+  applyLightboxTransform();
+}
+
+function cycleLightboxZoom() {
+  if (lbZoomMode === 'fit') setLightboxZoomMode('100');
+  else if (lbZoomMode === '100') setLightboxZoomMode('200');
+  else setLightboxZoomMode('fit');
+}
+
+function syncLightboxHeader(cap, idx, list) {
+  const originEl = $('#lb-origin');
+  const indexEl = $('#lb-index');
+  const dimsEl = $('#lb-dims');
+  const meta = $('#lightbox-meta');
+  const dl = $('#lb-download');
+  const prevBtn = $('#lb-prev');
+  const nextBtn = $('#lb-next');
+  const img = $('#lightbox-img');
+
+  if (originEl) {
+    const isPc = cap.origin === 'pc';
+    originEl.className = `cap-badge inline ${isPc ? 'pc' : 'phone'}`;
+    originEl.textContent = isPc ? 'PC' : 'Phone';
+  }
+  if (indexEl) indexEl.textContent = `${idx + 1} / ${list.length}`;
+  if (prevBtn) prevBtn.disabled = idx <= 0;
+  if (nextBtn) nextBtn.disabled = idx >= list.length - 1;
+  if (meta) meta.textContent = `${cap.file} · ${fmtBytes(cap.bytes || 0)} · ${fmtTime(cap.created_at)}`;
+  if (dl) {
+    dl.href = `/media/${encodeURIComponent(cap.file)}`;
+    dl.download = cap.file;
+  }
+  if (dimsEl) {
+    if (img?.complete && img.naturalWidth > 0) {
+      dimsEl.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+      dimsEl.classList.remove('hidden');
+    } else {
+      dimsEl.classList.add('hidden');
+    }
+  }
+}
+
 function openLightbox(idx) {
   const list = filteredSortedCaptures();
   if (idx < 0 || idx >= list.length) return;
@@ -756,22 +847,71 @@ function openLightbox(idx) {
   const cap = list[idx];
   const lb = $('#lightbox');
   const img = $('#lightbox-img');
-  const meta = $('#lightbox-meta');
-  const dl = $('#lb-download');
+  const dimsEl = $('#lb-dims');
   if (!lb || !img) return;
+  const wasHidden = lb.classList.contains('hidden');
 
+  resetLightboxView();
+  if (dimsEl) dimsEl.classList.add('hidden');
+  img.onload = () => {
+    const cur = filteredSortedCaptures()[lightboxIdx];
+    if (cur && cur.id === cap.id && dimsEl && img.naturalWidth > 0) {
+      dimsEl.textContent = `${img.naturalWidth} × ${img.naturalHeight} px`;
+      dimsEl.classList.remove('hidden');
+    }
+  };
   img.src = `/media/${encodeURIComponent(cap.file)}`;
-  if (meta) meta.textContent = `${cap.file} · ${fmtBytes(cap.bytes || 0)} · ${fmtTime(cap.created_at)}`;
-  if (dl) {
-    dl.href = `/media/${encodeURIComponent(cap.file)}`;
-    dl.download = cap.file;
-  }
+  syncLightboxHeader(cap, idx, list);
   lb.classList.remove('hidden');
+  if (wasHidden) activateModalFocus(lb, $('#lb-close'));
 }
 
 function closeLightbox() {
   lightboxIdx = -1;
-  $('#lightbox')?.classList.add('hidden');
+  resetLightboxView();
+  const lb = $('#lightbox');
+  if (lb && !lb.classList.contains('hidden')) {
+    lb.classList.add('hidden');
+    deactivateModalFocus(lb);
+  }
+}
+
+async function rotateLightboxCapture() {
+  if (lbRotateBusy || lightboxIdx === -1) return;
+  const list = filteredSortedCaptures();
+  const cap = list[lightboxIdx];
+  if (!cap) return;
+  const btn = $('#lb-rotate');
+  lbRotateBusy = true;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/captures/${cap.id}/rotate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deg: 90 }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      showToast(err.error || 'Could not rotate capture');
+      return;
+    }
+    const { capture: updated } = await r.json();
+    if (updated) {
+      const i = captures.findIndex(c => c.id === updated.id);
+      if (i !== -1) captures[i] = updated;
+      renderCaptures();
+      const refreshedList = filteredSortedCaptures();
+      const nextIdx = refreshedList.findIndex(c => c.id === updated.id);
+      if (nextIdx !== -1 && lightboxIdx !== -1) openLightbox(nextIdx);
+      loadStats();
+    }
+    showToast('Rotated 90° clockwise');
+  } catch {
+    showToast('Could not rotate capture');
+  } finally {
+    lbRotateBusy = false;
+    if (btn) btn.disabled = false;
+  }
 }
 
 function deleteCapture(id) {
@@ -825,6 +965,16 @@ function renderFiles() {
   syncFileSelectionUI();
 
   listEl.replaceChildren();
+  if (!filesLoaded) {
+    emptyEl?.classList.add('hidden');
+    for (let i = 0; i < 3; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'file-skel';
+      sk.setAttribute('aria-hidden', 'true');
+      listEl.appendChild(sk);
+    }
+    return;
+  }
   if (!files.length) {
     emptyEl?.classList.remove('hidden');
     return;
@@ -1052,13 +1202,44 @@ function renderTexts() {
   }
 }
 
+function setConnBanner(state, text) {
+  const banner = $('#conn-banner');
+  const textEl = $('#conn-banner-text');
+  const retryBtn = $('#conn-retry');
+  if (!banner) return;
+  if (connRestoreTimer) { clearTimeout(connRestoreTimer); connRestoreTimer = null; }
+  if (state === 'hidden') {
+    banner.classList.add('hidden');
+    banner.classList.remove('restored');
+    return;
+  }
+  if (textEl && text) textEl.textContent = text;
+  banner.classList.toggle('restored', state === 'restored');
+  if (retryBtn) retryBtn.classList.toggle('hidden', state === 'restored');
+  banner.classList.remove('hidden');
+  if (state === 'restored') {
+    connRestoreTimer = setTimeout(() => setConnBanner('hidden'), 2200);
+  }
+}
+
 async function loadCaptures() {
   try {
     const r = await fetch('/api/captures?limit=100');
-    if (!r.ok) return;
+    if (!r.ok) {
+      capturesLoaded = true;
+      renderCaptures();
+      return false;
+    }
     captures = await r.json();
+    capturesLoaded = true;
     renderCaptures();
-  } catch {}
+    return true;
+  } catch {
+    capturesLoaded = true;
+    renderCaptures();
+    setConnBanner('lost', 'Unable to reach ProofPipe server — trying to reconnect…');
+    return false;
+  }
 }
 
 async function loadOlderCaptures() {
@@ -1081,10 +1262,20 @@ async function loadOlderCaptures() {
 async function loadFiles() {
   try {
     const r = await fetch('/api/files?limit=100');
-    if (!r.ok) return;
+    if (!r.ok) {
+      filesLoaded = true;
+      renderFiles();
+      return false;
+    }
     files = await r.json();
+    filesLoaded = true;
     renderFiles();
-  } catch {}
+    return true;
+  } catch {
+    filesLoaded = true;
+    renderFiles();
+    return false;
+  }
 }
 
 async function loadTexts() {
@@ -1273,19 +1464,36 @@ async function sendTextFromBar() {
   }
 }
 
-function connectSse() {
+function connectSse(forceReset = false) {
+  if (forceReset && activeSse) {
+    try { activeSse.close(); } catch {}
+    activeSse = null;
+  }
   const dot = $('#conn-dot');
   const txt = $('#conn-text');
   const es = new EventSource('/events');
+  activeSse = es;
 
   es.onopen = () => {
     if (dot) dot.className = 'dot ok';
     if (txt) txt.textContent = 'Live';
+    if (sseHadError) {
+      sseHadError = false;
+      setConnBanner('restored', 'Connection restored ✓');
+      loadCaptures();
+      loadFiles();
+      loadTexts();
+      loadStats();
+    } else {
+      setConnBanner('hidden');
+    }
   };
 
   es.onerror = () => {
+    sseHadError = true;
     if (dot) dot.className = 'dot warn';
     if (txt) txt.textContent = 'Reconnecting…';
+    setConnBanner('lost', 'Connection lost — trying to reconnect…');
   };
 
   es.onmessage = e => {
@@ -1302,12 +1510,39 @@ function connectSse() {
         loadCaptures();
       }
       loadStats();
+    } else if (type === 'capture-updated') {
+      if (msg?.capture && msg.capture.id != null) {
+        const idx = captures.findIndex(c => c.id === msg.capture.id);
+        if (idx !== -1) captures[idx] = msg.capture;
+        else captures.unshift(msg.capture);
+        renderCaptures();
+        if (lightboxIdx !== -1) {
+          const cur = filteredSortedCaptures()[lightboxIdx];
+          if (cur && cur.id === msg.capture.id) openLightbox(lightboxIdx);
+        }
+      } else {
+        loadCaptures();
+      }
+      loadStats();
     } else if (type === 'deleted') {
       if (msg?.id === 'all') {
         captures = [];
+        selectedCaptures.clear();
+        captureSelectMode = false;
+        closeLightbox();
+        renderCaptures();
+      } else if (Array.isArray(msg?.ids)) {
+        const drop = new Set(msg.ids);
+        const curCap = lightboxIdx !== -1 ? filteredSortedCaptures()[lightboxIdx] : null;
+        captures = captures.filter(c => !drop.has(c.id));
+        for (const id of drop) selectedCaptures.delete(id);
+        if (curCap && drop.has(curCap.id)) closeLightbox();
         renderCaptures();
       } else if (typeof msg?.id === 'number') {
+        const curCap = lightboxIdx !== -1 ? filteredSortedCaptures()[lightboxIdx] : null;
         captures = captures.filter(c => c.id !== msg.id);
+        selectedCaptures.delete(msg.id);
+        if (curCap && curCap.id === msg.id) closeLightbox();
         renderCaptures();
       } else {
         loadCaptures();
@@ -1400,12 +1635,39 @@ function wireEvents() {
     }
   });
 
+  const closeWhatsNewModal = () => {
+    const bd = $('#whats-new-backdrop');
+    if (bd && !bd.classList.contains('hidden')) {
+      bd.classList.add('hidden');
+      deactivateModalFocus(bd);
+    }
+  };
+  const closeTextsModal = () => {
+    const bd = $('#texts-backdrop');
+    if (bd && !bd.classList.contains('hidden')) {
+      bd.classList.add('hidden');
+      deactivateModalFocus(bd);
+    }
+  };
+  const closeSettingsModal = () => {
+    closeAllGlassSelects();
+    const bd = $('#settings-backdrop');
+    if (bd && !bd.classList.contains('hidden')) {
+      bd.classList.add('hidden');
+      deactivateModalFocus(bd);
+    }
+  };
+
   // What's New sheet modal (opens in-app like Settings)
   $('#whats-new-btn')?.addEventListener('click', () => {
     renderReleases();
-    $('#whats-new-backdrop')?.classList.remove('hidden');
+    const bd = $('#whats-new-backdrop');
+    if (bd) {
+      bd.classList.remove('hidden');
+      activateModalFocus(bd, $('#whats-new-close'));
+    }
   });
-  $('#whats-new-close')?.addEventListener('click', () => $('#whats-new-backdrop')?.classList.add('hidden'));
+  $('#whats-new-close')?.addEventListener('click', closeWhatsNewModal);
 
   $('#category-tabs')?.addEventListener('click', e => {
     const btn = e.target.closest('.filter-btn');
@@ -1440,9 +1702,13 @@ function wireEvents() {
 
   $('#texts-btn')?.addEventListener('click', () => {
     loadTexts();
-    $('#texts-backdrop')?.classList.remove('hidden');
+    const bd = $('#texts-backdrop');
+    if (bd) {
+      bd.classList.remove('hidden');
+      activateModalFocus(bd, $('#texts-close'));
+    }
   });
-  $('#texts-close')?.addEventListener('click', () => $('#texts-backdrop')?.classList.add('hidden'));
+  $('#texts-close')?.addEventListener('click', closeTextsModal);
   $('#clear-texts-btn')?.addEventListener('click', async () => {
     const plainCount = texts.filter(t => t.kind !== 'media').length;
     if (!plainCount) return;
@@ -1458,13 +1724,22 @@ function wireEvents() {
 
   const openSettingsModal = () => {
     loadSettings();
-    $('#settings-backdrop')?.classList.remove('hidden');
+    const bd = $('#settings-backdrop');
+    if (bd) {
+      bd.classList.remove('hidden');
+      activateModalFocus(bd, $('#settings-close'));
+    }
   };
-  $('#settings-btn')?.addEventListener('click', openSettingsModal);
   $('#top-settings-btn')?.addEventListener('click', openSettingsModal);
-  $('#settings-close')?.addEventListener('click', () => {
-    closeAllGlassSelects();
-    $('#settings-backdrop')?.classList.add('hidden');
+  $('#settings-close')?.addEventListener('click', closeSettingsModal);
+
+  $('#conn-retry')?.addEventListener('click', () => {
+    if ($('#conn-banner-text')) $('#conn-banner-text').textContent = 'Retrying connection…';
+    connectSse(true);
+    loadCaptures();
+    loadFiles();
+    loadTexts();
+    loadStats();
   });
 
   // Close modals when clicking the backdrop itself
@@ -1474,7 +1749,9 @@ function wireEvents() {
         closeAllGlassSelects();
         if (id === '#lightbox') closeLightbox();
         else if (id === '#pc-confirm-backdrop') closePcConfirm(false);
-        else $(id)?.classList.add('hidden');
+        else if (id === '#whats-new-backdrop') closeWhatsNewModal();
+        else if (id === '#texts-backdrop') closeTextsModal();
+        else if (id === '#settings-backdrop') closeSettingsModal();
       }
     });
   }
@@ -1513,6 +1790,55 @@ function wireEvents() {
     renderCaptures();
   });
 
+  $('#captures-select-btn')?.addEventListener('click', () => {
+    captureSelectMode = !captureSelectMode;
+    if (!captureSelectMode) selectedCaptures.clear();
+    renderCaptures();
+  });
+
+  $('#captures-select-all')?.addEventListener('click', () => {
+    const visible = filteredSortedCaptures();
+    const allSelected = visible.length > 0 && visible.every(c => selectedCaptures.has(c.id));
+    if (allSelected) {
+      for (const c of visible) selectedCaptures.delete(c.id);
+    } else {
+      captureSelectMode = true;
+      for (const c of visible) selectedCaptures.add(c.id);
+    }
+    renderCaptures();
+  });
+
+  $('#captures-delete-selected')?.addEventListener('click', async () => {
+    const ids = [...selectedCaptures];
+    if (!ids.length) return;
+    if (!await pcConfirm({
+      title: `Delete ${ids.length} selected capture${ids.length === 1 ? '' : 's'}?`,
+      body: 'Selected photos will be permanently deleted from this PC.',
+      ok: 'Delete Selected',
+    })) return;
+    flushPcUndo();
+    try {
+      const r = await fetch('/api/captures', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (r.ok) {
+        const drop = new Set(ids);
+        captures = captures.filter(c => !drop.has(c.id));
+        selectedCaptures.clear();
+        captureSelectMode = false;
+        renderCaptures();
+        loadStats();
+        showToast(`Deleted ${ids.length} capture${ids.length === 1 ? '' : 's'}`);
+      } else {
+        showToast('Could not delete selected captures');
+      }
+    } catch {
+      showToast('Could not delete selected captures');
+    }
+  });
+
   $('#pc-upload-input')?.addEventListener('change', async e => {
     const list = [...(e.target.files || [])];
     e.target.value = '';
@@ -1542,6 +1868,8 @@ function wireEvents() {
     const r = await fetch('/api/captures', { method: 'DELETE' });
     if (r.ok) {
       captures = [];
+      selectedCaptures.clear();
+      captureSelectMode = false;
       renderCaptures();
       loadStats();
       showToast('Cleared photo library');
@@ -1701,6 +2029,51 @@ function wireEvents() {
     const list = filteredSortedCaptures();
     if (lightboxIdx < list.length - 1) openLightbox(lightboxIdx + 1);
   });
+  $('#lb-zoom')?.addEventListener('click', cycleLightboxZoom);
+  $('#lb-rotate')?.addEventListener('click', rotateLightboxCapture);
+  $('#lightbox-img')?.addEventListener('dblclick', () => {
+    if (lbZoomMode === 'fit') setLightboxZoomMode('100');
+    else setLightboxZoomMode('fit');
+  });
+
+  const lbStage = $('#lightbox-stage');
+  if (lbStage) {
+    let panDrag = null;
+    lbStage.addEventListener('pointerdown', e => {
+      if (lbScale <= 1.01) return;
+      e.preventDefault();
+      lbStage.classList.add('panning');
+      lbStage.setPointerCapture?.(e.pointerId);
+      panDrag = { x: e.clientX, y: e.clientY, sx: lbPanX, sy: lbPanY, id: e.pointerId };
+    });
+    lbStage.addEventListener('pointermove', e => {
+      if (!panDrag || e.pointerId !== panDrag.id) return;
+      lbPanX = panDrag.sx + (e.clientX - panDrag.x);
+      lbPanY = panDrag.sy + (e.clientY - panDrag.y);
+      applyLightboxTransform();
+    });
+    const endPan = e => {
+      if (!panDrag || (e && e.pointerId !== panDrag.id)) return;
+      panDrag = null;
+      lbStage.classList.remove('panning');
+    };
+    lbStage.addEventListener('pointerup', endPan);
+    lbStage.addEventListener('pointercancel', endPan);
+    lbStage.addEventListener('wheel', e => {
+      if (lightboxIdx === -1) return;
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      const next = Math.max(1, Math.min(4, lbScale + delta));
+      if (next <= 1.02) {
+        resetLightboxView();
+      } else {
+        lbScale = next;
+        lbZoomMode = next >= 2.2 ? '200' : '100';
+        applyLightboxTransform();
+      }
+    }, { passive: false });
+  }
+
   $('#lb-copy')?.addEventListener('click', () => {
     const cap = filteredSortedCaptures()[lightboxIdx];
     if (cap) copyCapturePng(cap.file);
@@ -1716,19 +2089,55 @@ function wireEvents() {
 
   // Global keyboard & paste handlers
   document.addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+      const top = activeFocusModal();
+      if (top) {
+        const list = getModalFocusables(top.modal);
+        if (!list.length) {
+          e.preventDefault();
+          return;
+        }
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first || !top.modal.contains(document.activeElement)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (document.activeElement === last || !top.modal.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        }
+        return;
+      }
+    }
+
     if (e.key === 'Escape') {
       if (confirmResolver) {
         closePcConfirm(false);
         return;
       }
-      closeAllGlassSelects();
+      if (document.querySelector('.glass-select.open')) {
+        closeAllGlassSelects();
+        return;
+      }
+      const top = activeFocusModal();
+      if (top) {
+        if (top.modal.id === 'lightbox') closeLightbox();
+        else if (top.modal.id === 'whats-new-backdrop') closeWhatsNewModal();
+        else if (top.modal.id === 'texts-backdrop') closeTextsModal();
+        else if (top.modal.id === 'settings-backdrop') closeSettingsModal();
+        return;
+      }
       closeLightbox();
-      $('#whats-new-backdrop')?.classList.add('hidden');
-      $('#texts-backdrop')?.classList.add('hidden');
-      $('#settings-backdrop')?.classList.add('hidden');
+      closeWhatsNewModal();
+      closeTextsModal();
+      closeSettingsModal();
     } else if (lightboxIdx !== -1) {
       if (e.key === 'ArrowLeft' && lightboxIdx > 0) openLightbox(lightboxIdx - 1);
-      if (e.key === 'ArrowRight' && lightboxIdx < filteredSortedCaptures().length - 1) openLightbox(lightboxIdx + 1);
+      else if (e.key === 'ArrowRight' && lightboxIdx < filteredSortedCaptures().length - 1) openLightbox(lightboxIdx + 1);
+      else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) rotateLightboxCapture();
+      else if (e.key === '0') resetLightboxView();
     }
   });
 
@@ -1780,6 +2189,8 @@ function wireEvents() {
 
 wireEvents();
 renderReleases();
+renderCaptures();
+renderFiles();
 loadCaptures();
 loadFiles();
 loadTexts();

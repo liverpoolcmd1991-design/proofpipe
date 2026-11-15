@@ -14,10 +14,8 @@ set UV_THREADPOOL_SIZE=16
 
 if /i "%~1"=="--console" goto :console
 
-rem Default: launch background daemon + Windows system tray icon (no lingering CMD window)
-set PP_OPEN_BROWSER=1
-node scripts\daemon.js start --open >nul 2>&1
-start "" /B powershell.exe -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "%~dp0scripts\tray.ps1"
+rem Default: launch Windows tray + background daemon silently via GUI subsystem (tray only)
+start "" wscript.exe "%~dp0ProofPipe.vbs"
 exit /b 0
 
 :console

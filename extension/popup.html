@@ -37,6 +37,16 @@
   }
   header span { display: flex; align-items: center; gap: 7px; }
   header img { border-radius: 4px; }
+  .head-actions { display: flex; align-items: center; gap: 6px; }
+  #open-workbench {
+    background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 999px;
+    font-size: 11px; font-weight: 600; padding: 5px 9px; cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    transition: color .15s, border-color .15s, background .15s, transform .08s;
+  }
+  #open-workbench:hover { color: var(--fg); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.12); }
 
   /* quick-send two-way dock */
   .qsend {
@@ -100,8 +110,32 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.22);
   }
 
+  /* search filter */
+  .search-row {
+    margin: 7px 12px 2px; position: relative; display: flex; align-items: center;
+  }
+  .search-row .ic-search {
+    position: absolute; left: 10px; width: 12px; height: 12px; color: var(--faint); pointer-events: none;
+  }
+  #search-input {
+    width: 100%; background: rgba(6, 9, 19, 0.72); border: 1px solid var(--border);
+    color: var(--fg); border-radius: 999px; font: inherit; font-size: 12px;
+    padding: 6px 26px 6px 28px; outline: none;
+    user-select: text; -webkit-user-select: text;
+    transition: border-color .15s, background .15s;
+  }
+  #search-input:focus { border-color: rgba(100, 210, 255, 0.5); background: rgba(6, 9, 19, 0.88); }
+  #search-input::placeholder { color: var(--faint); }
+  #search-clear {
+    position: absolute; right: 6px; width: 18px; height: 18px; border-radius: 50%;
+    border: none; background: rgba(255, 255, 255, 0.1); color: var(--muted);
+    font-size: 12px; line-height: 1; cursor: pointer; display: grid; place-items: center;
+  }
+  #search-clear.hidden { display: none; }
+  #search-clear:hover { color: var(--fg); background: rgba(255, 255, 255, 0.18); }
+
   /* list */
-  .list { max-height: 270px; overflow-y: auto; padding: 8px 12px; scrollbar-gutter: stable; }
+  .list { max-height: 260px; overflow-y: auto; padding: 8px 12px; scrollbar-gutter: stable; }
   .list::-webkit-scrollbar { width: 5px; }
   .list::-webkit-scrollbar-track { background: transparent; }
   .list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.16); border-radius: 3px; }
@@ -114,28 +148,56 @@
     transition: border-color .15s, background .15s, transform .08s;
   }
   .item:hover { border-color: var(--border-strong); background: var(--panel-2); }
-  .item img { width: 56px; height: 42px; object-fit: cover; border-radius: 8px; pointer-events: none; -webkit-user-drag: none; }
-  .item .meta { color: var(--muted); font-size: 11px; }
+  .item img { width: 56px; height: 42px; object-fit: cover; border-radius: 8px; pointer-events: none; -webkit-user-drag: none; flex: none; }
+  .item-main { flex: 1; min-width: 0; }
+  .item-top { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12.5px; }
+  .item .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  .origin-badge {
+    display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 999px;
+    font-size: 9.5px; font-weight: 700; letter-spacing: .01em; line-height: 1.35; flex: none;
+  }
+  .origin-badge.phone { background: rgba(48, 209, 88, 0.16); color: #5ee987; border: 1px solid rgba(48, 209, 88, 0.34); }
+  .origin-badge.pc { background: rgba(96, 165, 250, 0.16); color: #7dd3fc; border: 1px solid rgba(96, 165, 250, 0.36); }
+
+  .item-del {
+    flex: none; margin-left: auto; width: 24px; height: 24px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.05);
+    color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer;
+    display: grid; place-items: center;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .item-del:hover { color: #ff6961; border-color: rgba(255, 69, 58, 0.45); background: rgba(255, 69, 58, 0.16); }
 
   .titem {
+    display: flex; align-items: flex-start; gap: 8px;
     padding: 9px 11px; background: var(--panel); border: 1px solid var(--border);
     border-radius: 12px; margin-bottom: 7px;
     cursor: pointer; font-size: 12.5px; line-height: 1.45; word-break: break-word;
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     transition: border-color .15s, background .15s, transform .08s;
   }
   .titem:hover { border-color: var(--border-strong); background: var(--panel-2); }
-  .titem .when { color: var(--muted); font-size: 10.5px; margin-top: 4px; }
+  .titem-main { flex: 1; min-width: 0; }
+  .titem-body { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .titem .when { color: var(--muted); font-size: 10.5px; margin-top: 4px; display: flex; align-items: center; gap: 5px; }
 
   /* error detail stays selectable for troubleshooting */
   .empty {
-    color: var(--muted); text-align: center; padding: 20px 10px; line-height: 1.55;
-    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    color: var(--muted); text-align: center; padding: 18px 10px; line-height: 1.55;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
     user-select: text; -webkit-user-select: text;
   }
   .empty span { user-select: text; -webkit-user-select: text; }
   .err-detail { font-size: 10.5px; color: var(--faint); word-break: break-word; }
+  .empty-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 4px; }
+  .recovery-btn {
+    background: rgba(255, 255, 255, 0.07); border: 1px solid var(--border); color: var(--fg);
+    border-radius: 999px; font-size: 11px; font-weight: 600; padding: 5px 10px; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transition: border-color .15s, background .15s, transform .08s;
+  }
+  .recovery-btn:hover { border-color: rgba(100, 210, 255, 0.5); background: rgba(10, 132, 255, 0.16); }
 
   .status {
     padding: 8px 14px 6px; color: var(--accent); font-size: 12px; font-weight: 600;
@@ -219,6 +281,7 @@
   .ic-link { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'); }
   .ic-shot { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3"/></svg>'); }
   .ic-send { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>'); }
+  .ic-search { --m: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>'); }
 
   /* copy confirmation flash */
   .item.copied, .titem.copied { border-color: var(--accent); background: var(--accent-soft); }
@@ -239,7 +302,13 @@
 </style>
 </head>
 <body>
-  <header><span><img src="icon.png" width="14" height="14" alt=""> ProofPipe</span> <button id="sync" title="Reload from the ProofPipe server" aria-label="Reload from the ProofPipe server"><i class="ic ic-sync" aria-hidden="true"></i> Sync now</button></header>
+  <header>
+    <span><img src="icon.png" width="14" height="14" alt=""> ProofPipe</span>
+    <div class="head-actions">
+      <button id="open-workbench" title="Open ProofPipe desktop workbench in a new tab" aria-label="Open ProofPipe desktop workbench">Workbench ↗</button>
+      <button id="sync" title="Reload from the ProofPipe server" aria-label="Reload from the ProofPipe server"><i class="ic ic-sync" aria-hidden="true"></i> Sync now</button>
+    </div>
+  </header>
   <section class="qsend" aria-label="Quick send to phone">
     <div class="qsend-bar">
       <button id="send-tab-link" class="qbtn" title="Send the active tab URL to your phone" aria-label="Send active tab link to phone"><i class="ic ic-link" aria-hidden="true"></i> Tab Link</button>
@@ -253,6 +322,11 @@
   <div class="tabs" role="tablist" aria-label="ProofPipe panels">
     <button id="tab-caps" class="tab active" role="tab" aria-selected="true" aria-controls="list">Captures</button>
     <button id="tab-texts" class="tab" role="tab" aria-selected="false" aria-controls="list">Texts from phone</button>
+  </div>
+  <div class="search-row">
+    <i class="ic ic-search" aria-hidden="true"></i>
+    <input id="search-input" type="search" placeholder="Filter captures &amp; texts…" aria-label="Filter captures and texts">
+    <button id="search-clear" class="hidden" type="button" title="Clear filter" aria-label="Clear filter">×</button>
   </div>
   <div class="list" id="list" role="tabpanel" aria-labelledby="tab-caps" aria-label="Captures and texts"><div class="empty">Loading…</div></div>
   <div class="status" id="status" role="status"></div>

@@ -544,7 +544,7 @@ ws.addEventListener('message', ev => {
   if (m.method === 'Input.dragIntercepted') intercepted = m.params.data;
 });
 
-async function storeOf(from, to, label) {
+async function storeOf(from, to, _label) {
   if (process.env.PP_STORE !== '1') return '(skipped)';
   intercepted = null;
   await interceptEnabled(true);

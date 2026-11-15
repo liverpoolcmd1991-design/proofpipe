@@ -1,15 +1,15 @@
 // Phone PWA service worker. Registered ONLY by phone.js; precaches the phone
 // shell under canonical query-stripped keys and serves network-first with
 // cache fallback when offline.
-const CACHE = 'proofpipe-v34';
+const CACHE = 'proofpipe-v37';
 const SHELL = [
-  '/phone', '/phone.css', '/phone.js', '/toPng.js', '/queue.js',
+  '/phone', '/phone.css', '/shared.js', '/queue.js', '/phone-viewer.js', '/phone-files.js', '/phone.js',
   '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png',
-  '/icons/camera.svg', '/icons/chevron-up.svg', '/icons/download.svg',
+  '/icons/camera.svg', '/icons/chevron-left.svg', '/icons/chevron-right.svg', '/icons/chevron-up.svg', '/icons/download.svg',
   '/icons/file.svg', '/icons/images.svg', '/icons/mail.svg',
   '/icons/monitor.svg', '/icons/monitor-down.svg', '/icons/more-vertical.svg',
   '/icons/package.svg', '/icons/rotate-cw.svg', '/icons/send-horizontal.svg',
-  '/icons/smartphone.svg', '/icons/trash-2.svg', '/icons/upload.svg',
+  '/icons/smartphone.svg', '/icons/trash-2.svg',
   '/icons/x.svg',
 ];
 const SHELL_SET = new Set(SHELL);

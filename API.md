@@ -40,10 +40,13 @@ Web Share Target endpoint (`multipart/form-data`, 21 MB body limit). Stores shar
 Newest-first keyset-paginated list of stored captures (`limit` clamped to `1..200`, default `100`).
 
 ### `GET /api/captures/version`
-Lightweight change-detection fingerprint: `{ "n": 87, "latest": 12, "textId": 4 }`.
+Lightweight change-detection fingerprint: `{ "n": 87, "latest": 12, "textId": 4, "rev": 1 }`.
+
+### `POST /api/captures/:id/rotate`
+Losslessly re-encodes a stored capture rotated clockwise by `{ "deg": 90 | 180 | 270 }` (default `90`), writes a new stored filename and fresh thumbnail, updates SQLite and any `/media/` text links, and broadcasts `capture-updated`. Returns `{ "ok": true, "capture": { ... } }`.
 
 ### `DELETE /api/captures`
-Delete all captures from SQLite and disk. Returns `{ "ok": true, "deleted": 87 }`.
+Delete all captures from SQLite and disk (when called with no body) or a specific set of IDs (`{ "ids": [12, 13] }`). Returns `{ "ok": true, "deleted": 87 }`.
 
 ### `DELETE /api/captures/:id`
 Delete a single capture by ID. Returns `{ "ok": true }` or `404`.
@@ -97,7 +100,7 @@ Returns LAN IPv4 addresses, port, and scheme (`{ "ips": [...], "port": 8787, "sc
 Returns server version, capture count and byte usage, storage cap, file count/bytes, active media directory, phone presence status, and the 3 most recent arrivals.
 
 ### `GET /api/version`
-Returns `{ "version": "v1.23.0" }`.
+Returns `{ "version": "v1.24.0" }`.
 
 ### `POST /api/open-latest`
 Broadcasts an `open-latest` event and opens the newest capture on the host PC.
@@ -176,4 +179,4 @@ Generates a PNG QR code encoding `SCHEME://<ip>:<port>/phone` (`Cache-Control: n
 Streams a stored capture or its WebP/PNG thumbnail with immutable cache headers and HTTP `Range` support (`206`).
 
 ### `GET /events`
-Server-Sent Events stream (`text/event-stream`). Emits `capture`, `capture-ready`, `file`, `file-deleted`, `text`, `deleted`, `settings`, `open-latest`, and `phone` events.
+Server-Sent Events stream (`text/event-stream`). Emits `capture`, `capture-ready`, `capture-updated`, `file`, `file-deleted`, `text`, `deleted`, `settings`, `open-latest`, and `phone` events.

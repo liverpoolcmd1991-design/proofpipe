@@ -20,7 +20,11 @@ import { fileURLToPath } from 'node:url';
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = fs.readFileSync(path.join(APP, 'public/phone.html'), 'utf8');
 const css = fs.readFileSync(path.join(APP, 'public/phone.css'), 'utf8');
-const js = fs.readFileSync(path.join(APP, 'public/phone.js'), 'utf8');
+const sharedJs = fs.readFileSync(path.join(APP, 'public/shared.js'), 'utf8');
+const viewerJs = fs.readFileSync(path.join(APP, 'public/phone-viewer.js'), 'utf8');
+const filesJs = fs.readFileSync(path.join(APP, 'public/phone-files.js'), 'utf8');
+const phoneJs = fs.readFileSync(path.join(APP, 'public/phone.js'), 'utf8');
+const js = [sharedJs, viewerJs, filesJs, phoneJs].join('\n');
 
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch { /* optional */ }
@@ -795,10 +799,91 @@ test('phone: a file send reports progress in the status strip, not in a hidden b
 });
 
 test('phone: photo uploads report real byte-level XHR progress', { skip: skipOpt }, () => {
-  const uploadFn = js.slice(js.indexOf('async function upload(blob, opts = {})'), js.indexOf('// ---------- outbox'));
-  assert.match(uploadFn, /new XMLHttpRequest\(\)/);
-  assert.match(uploadFn, /xhr\.upload\.onprogress = e =>/);
-  assert.match(uploadFn, /opts\.onProgress\(Math\.round\(\(e\.loaded \/ e\.total\) \* 100\)\)/);
+  const uploadFn = phoneJs.slice(phoneJs.indexOf('async function upload(blob, opts = {})'), phoneJs.indexOf('// ---------- outbox'));
+  assert.match(uploadFn, /PPShared\.xhrPost\(SERVER \+ '\/upload'/);
+  assert.match(uploadFn, /onProgress:\s*opts\.onProgress/);
+  assert.match(sharedJs, /new XMLHttpRequest\(\)/);
+  assert.match(sharedJs, /xhr\.upload\.onprogress = e =>/);
+  assert.match(sharedJs, /onProgress\(Math\.min\(100, Math\.round\(\(e\.loaded \/ e\.total\) \* 100\)\)\)/);
   assert.ok(!/transferProgress\(tid,\s*-1\)/.test(js), 'no indeterminate -1 progress calls remain');
 });
 
+test('phone: persistent viewer rotation, batch selection controls, and composer ergonomics exist', { skip: skipOpt }, () => {
+  const d = doc();
+  // Persistent rotation control
+  const saveRot = d.querySelector('#viewer-save-rot');
+  assert.ok(saveRot, '#viewer-save-rot exists in viewer bar');
+  assert.match(viewerJs, /function saveViewerRotation\(/);
+  assert.match(viewerJs, /\/api\/captures\/.*\/rotate/);
+  assert.match(viewerJs, /rotateBlobPixels/);
+
+  // Batch selection controls
+  assert.ok(d.querySelector('#select-toggle'), '#select-toggle exists in recent heading');
+  const batchBar = d.querySelector('#batch-bar');
+  assert.ok(batchBar, '#batch-bar exists');
+  for (const id of ['#batch-count', '#batch-all', '#batch-retry', '#batch-delete', '#batch-done']) {
+    assert.ok(batchBar.querySelector(id), `${id} exists in batch bar`);
+  }
+  assert.match(phoneJs, /function setSelectMode\(/);
+  assert.match(phoneJs, /body:\s*JSON\.stringify\(\{\s*ids:/);
+
+  // Composer meta strip (char count, URL badge, Paste & Send >= 44px)
+  const metaStrip = d.querySelector('#text-modal .text-meta-strip');
+  assert.ok(metaStrip, '.text-meta-strip exists in composer modal');
+  assert.ok(metaStrip.querySelector('#text-char-count'), '#text-char-count exists');
+  assert.ok(metaStrip.querySelector('#text-url-badge'), '#text-url-badge exists');
+  assert.ok(metaStrip.querySelector('#text-paste-send.text-paste-btn'), '#text-paste-send exists with .text-paste-btn');
+  assert.ok(declaredHeight('.text-paste-btn') >= 44, '.text-paste-btn meets 44px touch floor');
+});
+
+test('phone: viewer HUD, remote loader/error recovery, prev/next nav, swipe-dismiss, and fit-scale rotation', { skip: skipOpt }, () => {
+  const d = doc();
+  // Top HUD bar houses origin, index counter, metadata, zoom pill, and close button
+  assert.ok(d.querySelector('#viewer-top #viewer-origin'), '#viewer-origin sits in top HUD');
+  assert.ok(d.querySelector('#viewer-top #viewer-pos'), '#viewer-pos sits in top HUD');
+  assert.ok(d.querySelector('#viewer-top #viewer-meta'), '#viewer-meta exists in top HUD');
+  assert.ok(d.querySelector('#viewer-top #viewer-zoom-btn'), '#viewer-zoom-btn exists in top HUD');
+  assert.ok(d.querySelector('#viewer-top #viewer-close'), '#viewer-close sits in top HUD');
+  assert.ok(declaredHeight('.vtop-btn') >= 44, 'zoom reset pill meets 44px touch floor');
+
+  // Stage overlays & nav arrows
+  assert.ok(d.querySelector('#viewer-stage #viewer-loader'), 'inline remote loader exists in stage');
+  assert.ok(d.querySelector('#viewer-stage #viewer-error #viewer-error-retry'), 'inline remote error retry exists in stage');
+  for (const id of ['#viewer-prev', '#viewer-next']) {
+    assert.ok(d.querySelector(`#viewer-stage ${id}`), `${id} exists in stage`);
+  }
+  assert.ok(declaredHeight('.viewer-nav') >= 44, 'viewer nav buttons meet 44px touch floor');
+
+  // Script behaviors: non-blocking remote open, generation cancel, rotation fit scale, vertical dismiss, chrome toggle, hasItem
+  assert.match(viewerJs, /let remoteLoadGen = 0/);
+  assert.match(viewerJs, /showViewer\(item,\s*\{\s*loading:\s*needsFetch\s*\}\)/);
+  assert.match(viewerJs, /function syncRotFitScale\(/);
+  assert.match(viewerJs, /dismissDragActive\s*=\s*true/);
+  assert.match(viewerJs, /setViewerChromeHidden\(/);
+  assert.match(viewerJs, /hasItem:\s*item\s*=>/);
+  assert.match(phoneJs, /viewer\.hasItem\(/);
+  assert.match(phoneJs, /fromPc:\s*true/);
+});
+
+test('phone: flash and undo notifications clear top chrome, use Liquid Glass, and support swipe-to-dismiss', () => {
+  const flashBlock = blocksFor('.flash');
+  assert.match(flashBlock, /top:\s*max\(68px/, 'flash sits below top status/composer/viewer bar');
+  assert.match(flashBlock, /backdrop-filter:\s*saturate\(/, 'flash uses Liquid Glass blur');
+  assert.match(flashBlock, /touch-action:\s*none/, 'flash accepts swipe gestures');
+
+  const undoBlock = blocksFor('#undo-toast');
+  assert.match(undoBlock, /backdrop-filter:\s*saturate\(/, 'undo toast uses Liquid Glass blur');
+  assert.match(undoBlock, /touch-action:\s*none/, 'undo toast accepts swipe gestures');
+
+  assert.match(cssNoComments, /\.flash\[data-tone="ok"\]/);
+  assert.match(cssNoComments, /\.flash\[data-tone="err"\]/);
+  assert.match(phoneJs, /function attachPhoneSwipeDismiss\(/);
+  assert.match(phoneJs, /function inferFlashTone\(/);
+});
+
+test('phone: offline service worker precaches viewer navigation chevrons', () => {
+  const swJs = fs.readFileSync(path.join(APP, 'public/sw.js'), 'utf8');
+  assert.match(swJs, /'\/icons\/chevron-left\.svg'/);
+  assert.match(swJs, /'\/icons\/chevron-right\.svg'/);
+  assert.doesNotMatch(swJs, /const CACHE = 'proofpipe-v36';/);
+});

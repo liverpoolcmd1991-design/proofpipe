@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { resolveAutoTarget } from './browser.js';
-import { beginFileRead, endFileRead } from './cleanup.js';
+import { beginFileRead, endFileRead, awaitFileIdle, rmWithRetry } from './cleanup.js';
 import { randomToken } from './util.js';
 
 // The accept ceiling for one capture, in pixels. The server stores the ORIGINAL
@@ -40,7 +40,7 @@ export const MAX_PIXELS = 64_000_000;
 
 export function createStore(ctx) {
   const sharp = ctx.sharp; // injected — see the threadpool note above
-  const { settings, stmts, bytes, notify, autoCaptureIds, paths, cleanup } = ctx;
+  const { settings, stmts, db, bytes, notify, autoCaptureIds, paths, cleanup } = ctx;
   // live-extension presence probe (server/sse.js hasBrowser), injected so
   // autoTarget can fall back to 'default' when the picked browser is absent.
   const browserPresent = ctx.browserPresent || (() => false);
@@ -379,5 +379,125 @@ export function createStore(ctx) {
     return job;
   }
 
-  return { probeImage, makeThumb, thumbFor, bootSweep, storeCapturedParts, EXT, MAX_PIXELS };
+  let capturesRev = 0;
+
+  async function rotateCapture(id, deg) {
+    const normDeg = ((Number(deg) % 360) + 360) % 360;
+    if (![90, 180, 270].includes(normDeg)) {
+      const err = new Error('deg must be 90, 180, or 270');
+      err.status = 400;
+      throw err;
+    }
+    const row = stmts.getCapture.get(id);
+    if (!row) {
+      const err = new Error('capture not found');
+      err.status = 404;
+      throw err;
+    }
+    const { captures: CAPTURES } = paths();
+    const oldFile = row.file;
+    const oldPath = path.join(CAPTURES, oldFile);
+    const oldThumb = path.join(CAPTURES, `t-${oldFile}`);
+
+    let meta;
+    beginFileRead(oldPath);
+    try {
+      meta = await sharp(oldPath, { limitInputPixels: MAX_PIXELS }).metadata();
+    } catch (e) {
+      const err = new Error('source capture unavailable');
+      err.status = 404;
+      throw err;
+    } finally {
+      endFileRead(oldPath);
+    }
+
+    if ((meta.width || 0) * (meta.height || 0) > MAX_PIXELS) {
+      const err = new Error('too many pixels');
+      err.status = 413;
+      throw err;
+    }
+
+    const fmt = meta.format;
+    const outExt = fmt === 'png' ? '.png'
+      : fmt === 'webp' ? '.webp'
+      : fmt === 'avif' ? '.avif'
+      : fmt === 'gif' ? '.gif'
+      : '.jpg';
+    const newFile = `${Date.now()}-${randomToken()}${outExt}`;
+    const tmpNew = path.join(CAPTURES, `t-tmp-${newFile}`);
+    const newPath = path.join(CAPTURES, newFile);
+    const tmpThumb = path.join(CAPTURES, `t-tmp-t-${newFile}`);
+    const newThumb = path.join(CAPTURES, `t-${newFile}`);
+
+    beginFileRead(oldPath);
+    try {
+      // Auto-orient EXIF first if needed so client-visible upright orientation rotates accurately.
+      let srcInput = oldPath;
+      if (meta.orientation && meta.orientation !== 1) {
+        srcInput = await sharp(oldPath, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' }).rotate().toBuffer();
+      }
+      const pipe = sharp(srcInput, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' && typeof srcInput === 'string' }).rotate(normDeg);
+      if (outExt === '.png') await pipe.png({ compressionLevel: 6 }).toFile(tmpNew);
+      else if (outExt === '.webp') await pipe.webp({ quality: 92 }).toFile(tmpNew);
+      else if (outExt === '.avif') await pipe.avif({ quality: 75 }).toFile(tmpNew);
+      else if (outExt === '.gif') await pipe.gif().toFile(tmpNew);
+      else await pipe.jpeg({ quality: 94 }).toFile(tmpNew);
+    } finally {
+      endFileRead(oldPath);
+    }
+
+    try {
+      await fsp.rename(tmpNew, newPath);
+      const origStat = await fsp.stat(newPath);
+      const thumbBuf = await makeThumb(newPath);
+      await fsp.writeFile(tmpThumb, thumbBuf);
+      await fsp.rename(tmpThumb, newThumb);
+      const newBytes = origStat.size + thumbBuf.length;
+
+      let textChanged = 0;
+      const updated = db.transaction(() => {
+        const cur = stmts.getCapture.get(id);
+        if (!cur) return null;
+        stmts.updateCaptureFileAndBytes.run(newFile, newBytes, id);
+        textChanged = stmts.updateTextBodyByMedia.run(`/media/${oldFile}`, `/media/${newFile}`, `/media/${oldFile}`).changes;
+        return stmts.getCapture.get(id);
+      })();
+
+      if (!updated) {
+        await fsp.rm(newPath, { force: true }).catch(() => {});
+        await fsp.rm(newThumb, { force: true }).catch(() => {});
+        const err = new Error('capture not found');
+        err.status = 404;
+        throw err;
+      }
+
+      bytes.set(stmts.sumBytes.get().b);
+      capturesRev++;
+
+      await awaitFileIdle(oldPath);
+      await rmWithRetry(oldPath);
+      await rmWithRetry(oldThumb);
+
+      notify('capture-updated', { capture: updated });
+      if (textChanged) notify('text');
+      return updated;
+    } catch (e) {
+      for (const f of [tmpNew, tmpThumb, newPath, newThumb]) {
+        await fsp.rm(f, { force: true }).catch(() => {});
+      }
+      throw e;
+    }
+  }
+
+  return {
+    probeImage,
+    makeThumb,
+    thumbFor,
+    bootSweep,
+    storeCapturedParts,
+    rotateCapture,
+    getCapturesRev: () => capturesRev,
+    EXT,
+    MAX_PIXELS,
+  };
 }

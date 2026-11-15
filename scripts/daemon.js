@@ -26,6 +26,7 @@ export function resolvePaths({ root = ROOT, env = process.env } = {}) {
     serverFile: path.join(root, 'server.js'),
     preloadFile: path.join(root, 'scripts', 'threadpool.cjs'),
     trayScript: path.join(root, 'scripts', 'tray.ps1'),
+    trayVbs: path.join(root, 'ProofPipe.vbs'),
   };
 }
 
@@ -108,10 +109,13 @@ export function buildAutostartSpec({
 } = {}) {
   const daemonJs = path.join(root, 'scripts', 'daemon.js');
   const trayPs1 = path.join(root, 'scripts', 'tray.ps1');
+  const trayVbs = path.join(root, 'ProofPipe.vbs');
   if (platform === 'win32') {
-    const command = fs.existsSync(trayPs1)
-      ? `powershell.exe -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "${trayPs1}"`
-      : `"${nodePath}" "${daemonJs}" start`;
+    const command = fs.existsSync(trayVbs)
+      ? `wscript.exe "${trayVbs}"`
+      : fs.existsSync(trayPs1)
+        ? `powershell.exe -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy Bypass -File "${trayPs1}"`
+        : `"${nodePath}" "${daemonJs}" start`;
     return { platform, kind: 'registry', key: WIN_RUN_KEY, valueName: AUTOSTART_NAME, command };
   }
   if (platform === 'darwin') {
@@ -315,11 +319,13 @@ export function openUrl(url) {
 export function launchTray({ env = process.env } = {}) {
   if (process.platform !== 'win32') return false;
   const paths = resolvePaths({ env });
-  const child = spawn(
-    'powershell.exe',
-    ['-NoProfile', '-STA', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', paths.trayScript],
-    { cwd: paths.root, env, detached: true, windowsHide: true, stdio: 'ignore' }
-  );
+  const child = fs.existsSync(paths.trayVbs)
+    ? spawn('wscript.exe', [paths.trayVbs], { cwd: paths.root, env, detached: true, windowsHide: true, stdio: 'ignore' })
+    : spawn(
+      'powershell.exe',
+      ['-NoProfile', '-STA', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', paths.trayScript],
+      { cwd: paths.root, env, detached: true, windowsHide: true, stdio: 'ignore' }
+    );
   child.unref();
   return true;
 }

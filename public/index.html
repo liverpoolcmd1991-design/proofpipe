@@ -33,7 +33,7 @@
 
   <div class="topbar-end">
     <button id="whats-new-btn" type="button" class="toolbtn glass-pill ver-trigger" title="Release notes and version history" aria-haspopup="dialog" aria-controls="whats-new-backdrop">
-      <span class="ver-chip" id="top-ver-chip">v1.23</span>
+      <span class="ver-chip" id="top-ver-chip">v1.25</span>
     </button>
     <button id="top-settings-btn" type="button" class="toolbtn glass-pill" title="System Settings" aria-haspopup="dialog" aria-controls="settings-backdrop">
       <i class="ic ic-gear" aria-hidden="true"></i>
@@ -57,9 +57,17 @@
   <div id="update-banner" class="hidden">
     <div class="update-banner-inner">
       <span class="update-dot" aria-hidden="true"></span>
-      <span id="update-banner-text" role="status">Software Update Available — ProofPipe was updated on the server</span>
+      <span role="status">Software Update Available — ProofPipe was updated on the server</span>
     </div>
     <button id="update-refresh" class="btn primary">Reload App</button>
+  </div>
+
+  <div id="conn-banner" class="conn-banner hidden" role="status" aria-live="polite">
+    <div class="update-banner-inner">
+      <span class="conn-banner-dot" aria-hidden="true"></span>
+      <span id="conn-banner-text">Connection lost — trying to reconnect…</span>
+    </div>
+    <button id="conn-retry" type="button" class="btn">Retry now</button>
   </div>
 
   <div class="view">
@@ -67,17 +75,16 @@
     <aside class="card side" id="rail" aria-label="Server status and pairing">
       <div class="side-head">
         <div class="pill"><span class="dot ok" id="conn-dot"></span><span id="conn-text">Live</span></div>
-        <button id="settings-btn" class="toolbtn settings-btn" title="Settings…" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-backdrop"><i class="ic ic-gear"></i><span>Configure</span></button>
       </div>
 
-      <section class="rail-card" id="status-card" aria-labelledby="status-label">
+      <section class="rail-card" aria-labelledby="status-label">
         <div class="rail-card-head">
           <h3 class="eyebrow" id="status-label"><i class="ic ic-phone"></i> Phone Connection</h3>
         </div>
         <div id="stats" class="stats-readout" aria-live="polite"><div>Checking connection…</div></div>
       </section>
 
-      <section class="rail-card" id="pair-card" aria-labelledby="pair-label">
+      <section class="rail-card" aria-labelledby="pair-label">
         <div class="pair-head">
           <h3 class="eyebrow" id="pair-label">Companion Pairing</h3>
           <button id="qr-toggle" class="linkbtn" aria-expanded="true" aria-controls="pair-body" title="Show or hide the pairing QR">Hide QR</button>
@@ -93,7 +100,7 @@
         </div>
       </section>
 
-      <section class="rail-card" id="cap-card" aria-labelledby="cap-label">
+      <section class="rail-card" aria-labelledby="cap-label">
         <div class="rail-card-head">
           <h3 class="eyebrow" id="cap-label">Local Storage</h3>
         </div>
@@ -105,7 +112,7 @@
     <!-- Main Workspace Column -->
     <div class="main-col">
       <!-- 1 · PHOTOS & CAPTURES LIBRARY -->
-      <section class="card workbench-card" id="captures-section" aria-labelledby="captures-heading">
+      <section class="card workbench-card" aria-labelledby="captures-heading">
         <div class="card-head">
           <div class="card-title-wrap">
             <div class="section-icon photos-icon" aria-hidden="true"><i class="ic ic-camera"></i></div>
@@ -148,6 +155,9 @@
             </div>
 
             <button id="density-toggle" class="toolbtn icon-btn" title="Toggle grid aspect size" aria-label="Toggle grid density"><i class="ic ic-grid"></i></button>
+            <button id="captures-select-btn" type="button" class="btn hidden" aria-pressed="false" title="Select multiple captures for batch delete">Select</button>
+            <button id="captures-select-all" type="button" class="btn hidden" title="Select or deselect all visible captures">All</button>
+            <button id="captures-delete-selected" type="button" class="btn danger-outline hidden">Delete Selected (<span id="captures-sel-count">0</span>)</button>
             <button id="clear-captures" class="btn danger-outline hidden" title="Delete all captures">Clear All</button>
             <label class="btn primary" for="pc-upload-input" role="button" tabindex="0">
               <i class="ic ic-upload"></i> Import Photo
@@ -170,7 +180,7 @@
       </section>
 
       <!-- 2 · SHARED FILES -->
-      <section class="card workbench-card" id="files-section" aria-labelledby="files-heading">
+      <section class="card workbench-card" aria-labelledby="files-heading">
         <div class="card-head">
           <div class="card-title-wrap">
             <div class="section-icon files-icon" aria-hidden="true"><i class="ic ic-file"></i></div>
@@ -224,7 +234,7 @@
         </div>
 
         <div class="compose-group">
-          <div id="text-bar" class="liquid-input-shell">
+          <div class="liquid-input-shell">
             <textarea id="text-input" rows="1" placeholder="Send message, URL, or snippet to phone… (Enter to send)" aria-label="Message to send to your phone"></textarea>
             <button id="text-send" class="toolbtn send-pill" title="Send to phone" aria-label="Send to phone"><i class="ic ic-send"></i></button>
           </div>
@@ -247,7 +257,7 @@
       <div>
         <div class="title-line">
           <h2 id="whats-new-dialog-title">What’s New in ProofPipe</h2>
-          <span class="ver-chip" id="wn-modal-ver">v1.23.0</span>
+          <span class="ver-chip" id="wn-modal-ver">v1.25.0</span>
         </div>
         <p class="muted modal-sub" id="release-count">Chronological release notes across Server, Phone PWA, and Extension</p>
       </div>
@@ -411,20 +421,24 @@
   <div class="lightbox-box">
     <div class="lightbox-bar">
       <div class="lightbox-title-wrap">
-        <span class="quicklook-badge">Preview</span>
+        <span id="lb-origin" class="cap-badge inline phone">Phone</span>
+        <span id="lb-index" class="preview-badge mono">1 / 1</span>
+        <span id="lb-dims" class="preview-badge mono hidden"></span>
         <span id="lightbox-meta" class="mono muted"></span>
       </div>
       <div class="lightbox-actions">
-        <button id="lb-prev" class="toolbtn icon-btn" title="Previous capture (←)" aria-label="Previous capture"><i class="ic ic-left"></i></button>
-        <button id="lb-next" class="toolbtn icon-btn" title="Next capture (→)" aria-label="Next capture"><i class="ic ic-right"></i></button>
-        <button id="lb-copy" class="btn primary"><i class="ic ic-copy"></i> Copy PNG</button>
-        <button id="lb-send-phone" class="btn" title="Pin capture to phone inbox"><i class="ic ic-phone"></i> Pin to Phone</button>
+        <button id="lb-prev" type="button" class="toolbtn icon-btn" title="Previous capture (←)" aria-label="Previous capture"><i class="ic ic-left"></i></button>
+        <button id="lb-next" type="button" class="toolbtn icon-btn" title="Next capture (→)" aria-label="Next capture"><i class="ic ic-right"></i></button>
+        <button id="lb-zoom" type="button" class="btn" title="Cycle zoom level (Fit / 100% / 200%)" aria-label="Zoom level">Fit</button>
+        <button id="lb-rotate" type="button" class="btn" title="Rotate 90° clockwise (R)" aria-label="Rotate 90 degrees clockwise"><i class="ic ic-rotate" aria-hidden="true"></i> Rotate</button>
+        <button id="lb-copy" type="button" class="btn primary"><i class="ic ic-copy"></i> Copy PNG</button>
+        <button id="lb-send-phone" type="button" class="btn" title="Pin capture to phone inbox"><i class="ic ic-phone"></i> Pin to Phone</button>
         <a id="lb-download" class="btn" download><i class="ic ic-download"></i> Save</a>
-        <button id="lb-delete" class="btn danger-outline"><i class="ic ic-trash"></i> Delete</button>
-        <button id="lb-close" class="toolbtn icon-btn modal-close-pill" title="Close preview (Esc)" aria-label="Close preview"><i class="ic ic-x"></i></button>
+        <button id="lb-delete" type="button" class="btn danger-outline"><i class="ic ic-trash"></i> Delete</button>
+        <button id="lb-close" type="button" class="toolbtn icon-btn modal-close-pill" title="Close preview (Esc)" aria-label="Close preview"><i class="ic ic-x"></i></button>
       </div>
     </div>
-    <div class="lightbox-stage">
+    <div class="lightbox-stage" id="lightbox-stage">
       <img id="lightbox-img" alt="Full resolution capture preview">
     </div>
   </div>
@@ -442,15 +456,17 @@
   </div>
 </div>
 
-<!-- PC UNDO SNACKBAR -->
-<div id="pc-undo-toast" class="pc-undo-toast hidden">
-  <span id="pc-undo-msg" role="status" aria-live="polite"></span>
-  <button type="button" id="pc-undo-btn" class="pc-undo-btn">Undo</button>
+<!-- PC NOTIFICATION DOCK (non-blocking bottom-right Liquid Glass stack) -->
+<div id="pc-notif-dock" class="pc-notif-dock">
+  <div id="pc-undo-toast" class="pc-undo-toast hidden">
+    <span id="pc-undo-msg" role="status" aria-live="polite"></span>
+    <button type="button" id="pc-undo-btn" class="pc-undo-btn">Undo</button>
+  </div>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 </div>
 
-<!-- HUD TOAST -->
-<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-
+<script src="/shared.js?v=__ASSET_SHARED__"></script>
+<script src="/releases.js?v=__ASSET_RELEASES__"></script>
 <script src="/toPng.js"></script>
 <script src="/app.js?v=__ASSET_APP__"></script>
 </body>

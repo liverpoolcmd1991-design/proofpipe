@@ -90,7 +90,7 @@ test('manifest content scripts load the shared modules before their consumers', 
   const scripts = (manifest.content_scripts || []).flatMap(cs => cs.js || []);
   const order = name => scripts.indexOf(name);
   for (const [consumer, deps] of [
-    ['content.js', ['toPng.js', 'discovery.js', 'paste-logic.js', 'files.js']],
+    ['content.js', ['toPng.js', 'discovery.js', 'paste-logic.js', 'files.js', 'tray-ui.js']],
   ]) {
     assert.ok(order(consumer) !== -1, `${consumer} must be a content script`);
     for (const dep of deps) {
@@ -105,5 +105,11 @@ test('deprecated dataUrl base64 media relay is removed across extension scripts'
     assert.ok(!/type:\s*'dataUrl'|msg\.type\s*===\s*'dataUrl'|fetchDataUrl/.test(src),
       `${file} should not contain deprecated dataUrl base64 media fallback`);
   }
+});
+
+test('extension/toPng.js stays byte-identical to public/toPng.js', () => {
+  const pub = fs.readFileSync(path.join(APP, 'public', 'toPng.js'), 'utf8');
+  const ext = fs.readFileSync(path.join(EXT, 'toPng.js'), 'utf8');
+  assert.equal(ext, pub, 'extension/toPng.js must match public/toPng.js');
 });
 

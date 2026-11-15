@@ -86,9 +86,55 @@ const PPDiscovery = (() => {
     return null;
   }
 
+  const LOOPBACK_RE = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
+
+  function originList({ pinned = null, manualPort = null, httpOnly = false } = {}) {
+    const cleanPinned = pinned && LOOPBACK_RE.test(pinned) ? pinned : null;
+    let pinnedPort = null;
+    if (cleanPinned) {
+      try {
+        const u = new URL(cleanPinned);
+        pinnedPort = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+      } catch {}
+    }
+    const cleanManual = parsePort(manualPort);
+    let bases = candidateHosts(candidatePorts({ manualPort: cleanManual, pinnedPort }));
+    if (httpOnly) bases = bases.filter(h => h.startsWith('http:'));
+    return cleanPinned ? [cleanPinned, ...bases.filter(b => b !== cleanPinned)] : bases;
+  }
+
+  async function fetchFirst(bases, path, init, timeoutMs = 4000) {
+    for (const base of bases) {
+      try {
+        const opts = { ...(init || {}) };
+        if (!opts.signal) opts.signal = AbortSignal.timeout(timeoutMs);
+        const r = await fetch(`${base}${path}`, opts);
+        if (r.ok) return { base, response: r };
+      } catch {}
+    }
+    return null;
+  }
+
+  async function dataUrlToUploadForm(dataUrl) {
+    const blob = await (await fetch(dataUrl)).blob();
+    if (!blob || !blob.size) throw new Error('empty screenshot');
+    const ext = ((blob.type || '').split('/')[1] || 'png').replace('jpeg', 'jpg');
+    const fd = new FormData();
+    fd.append('source', 'pc');
+    fd.append('photo', blob, `tab-capture.${ext}`);
+    return fd;
+  }
+
+  function parseUtcDate(sql) {
+    if (!sql) return null;
+    const d = new Date(String(sql).replace(' ', 'T') + 'Z');
+    return isNaN(d) ? null : d;
+  }
+
   return {
-    DEFAULT_PORT, SCAN_RANGE, EXTRA_PORTS, HOST_TPLS,
+    DEFAULT_PORT, SCAN_RANGE, EXTRA_PORTS, HOST_TPLS, LOOPBACK_RE,
     parsePort, candidatePorts, candidateHosts, primaryHost, probeHosts,
+    originList, fetchFirst, dataUrlToUploadForm, parseUtcDate,
   };
 })();
 if (typeof self !== 'undefined') self.PPDiscovery = PPDiscovery;

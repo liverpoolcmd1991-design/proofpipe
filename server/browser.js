@@ -10,7 +10,7 @@
 // location, so browsers not in the list below still show up. "Default
 // browser" (the built-in choice) falls back to `start`, which opens the user's
 // OS default — fully agnostic by construction.
-import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -76,8 +76,8 @@ function regDefaultPath(exeName) {
         // pipe on some Windows versions — strip the nulls or the regex misses
         const m = /\(Default\)\s+REG_SZ\s+(\S.*)/.exec(out.replace(/\0/g, ''));
         const p = m ? m[1].trim() : null;
-        if (p && fs.existsSync(p)) resolve(p);
-        else if (--remaining === 0) resolve(null);
+        if (!p) { if (--remaining === 0) resolve(null); return; }
+        fsp.access(p).then(() => resolve(p), () => { if (--remaining === 0) resolve(null); });
       });
     }
   });
@@ -99,7 +99,8 @@ async function detectBrowsers() {
     // modal for seconds. Promise.all preserves CANDIDATES order.
     const results = await Promise.all(CANDIDATES.map(async c => {
       for (const p of c.paths()) {
-        try { if (p && fs.existsSync(p)) return { id: c.id, name: c.name, path: p }; } catch {}
+        if (!p) continue;
+        try { await fsp.access(p); return { id: c.id, name: c.name, path: p }; } catch {}
       }
       const viaReg = await regDefaultPath(c.exe);
       return viaReg ? { id: c.id, name: c.name, path: viaReg } : null;

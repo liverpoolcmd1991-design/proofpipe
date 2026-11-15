@@ -146,11 +146,27 @@ async function deleteTextById(id) {
 // worker's and the content script's by hand.
 const safeFile = PPFiles.safe;
 const mediaUrlCache = new Map();
+const popupPngCache = new Map();
+const popupPngPending = new Map();
+const POPUP_PNG_BUDGET = 16 * 1024 * 1024;
+let popupPngBytes = 0;
+function popupPngPut(key, png) {
+  if (popupPngCache.has(key)) { popupPngBytes -= popupPngCache.get(key).size; popupPngCache.delete(key); }
+  popupPngCache.set(key, png);
+  popupPngBytes += png.size;
+  while (popupPngBytes > POPUP_PNG_BUDGET && popupPngCache.size > 1) {
+    const old = popupPngCache.keys().next().value;
+    popupPngBytes -= popupPngCache.get(old).size;
+    popupPngCache.delete(old);
+  }
+}
 // the popup is short-lived, but blob URLs pin their bytes until its renderer
 // goes away — hand them back on teardown
 addEventListener('pagehide', () => {
   for (const u of mediaUrlCache.values()) URL.revokeObjectURL(u);
   mediaUrlCache.clear();
+  popupPngCache.clear();
+  popupPngBytes = 0;
 });
 
 // Thumbnails load when they scroll into VIEW. The list is up to 100 rows while
@@ -207,13 +223,38 @@ function copiedFlash(el, msg) {
   setTimeout(() => el.classList.remove('copied'), 1200);
 }
 
-async function copyCapture(capture, el) {
-  setStatus(`Copying #${capture.id}…`);
-  try {
+function popupPngFor(capture) {
+  const key = `${capture.id}:${capture.file}`;
+  const hit = popupPngCache.get(key);
+  if (hit) {
+    popupPngCache.delete(key);
+    popupPngCache.set(key, hit);
+    return Promise.resolve(hit);
+  }
+  const inflight = popupPngPending.get(key);
+  if (inflight) return inflight;
+  const p = (async () => {
     const blob = await fetchMediaBlob(capture.file);
     if (!blob) throw new Error('no image');
     const png = await toPng(blob);
-    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    popupPngPut(key, png);
+    return png;
+  })().finally(() => popupPngPending.delete(key));
+  popupPngPending.set(key, p);
+  p.catch(() => {});
+  return p;
+}
+
+async function copyCapture(capture, el) {
+  setStatus(`Copying #${capture.id}…`);
+  try {
+    const pngPromise = popupPngFor(capture);
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngPromise })]);
+    } catch (e) {
+      if (!(e instanceof TypeError)) throw e;
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': await pngPromise })]);
+    }
     if (el) copiedFlash(el, `✓ Copied #${capture.id} — Ctrl+V into your chat`);
     else setStatus(`✓ Copied #${capture.id} — Ctrl+V into your chat`);
   } catch {
@@ -313,8 +354,12 @@ function renderCaps() {
   const q = filterQuery;
   const rows = q
     ? lastCaps.filter(c => {
-        const orig = c.origin === 'pc' ? 'pc' : 'phone';
-        const hay = `#${c.id} ${c.file || ''} ${orig} ${popupWhen(c.created_at)}`.toLowerCase();
+        let hay = c._searchHay;
+        if (!hay) {
+          const orig = c.origin === 'pc' ? 'pc' : 'phone';
+          const when = c._when || (c._when = popupWhen(c.created_at));
+          hay = c._searchHay = `#${c.id} ${c.file || ''} ${orig} ${when}`.toLowerCase();
+        }
         return hay.includes(q);
       })
     : lastCaps;
@@ -347,7 +392,7 @@ function renderCaps() {
     idLine.append(idTxt, originBadge(c.origin));
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = popupWhen(c.created_at);
+    meta.textContent = c._when || (c._when = popupWhen(c.created_at));
     info.append(idLine, meta);
 
     const delBtn = document.createElement('button');
@@ -412,8 +457,12 @@ function renderTexts() {
   const q = filterQuery;
   const rows = q
     ? lastTexts.filter(t => {
-        const src = t.source === 'pc' ? 'pc' : 'phone';
-        const hay = `${t.body || ''} #${t.id} ${src} ${popupWhen(t.created_at)}`.toLowerCase();
+        let hay = t._searchHay;
+        if (!hay) {
+          const src = t.source === 'pc' ? 'pc' : 'phone';
+          const when = t._when || (t._when = popupWhen(t.created_at));
+          hay = t._searchHay = `${t.body || ''} #${t.id} ${src} ${when}`.toLowerCase();
+        }
         return hay.includes(q);
       })
     : lastTexts;
@@ -435,7 +484,7 @@ function renderTexts() {
     body.textContent = t.body;
     const when = document.createElement('div');
     when.className = 'when';
-    const when_ = popupWhen(t.created_at);
+    const when_ = t._when || (t._when = popupWhen(t.created_at));
     const metaTxt = document.createElement('span');
     metaTxt.textContent = `#${t.id}${when_ ? ` · ${when_}` : ''}`;
     when.append(originBadge(t.source), metaTxt);

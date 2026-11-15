@@ -279,20 +279,30 @@
   // the 400px grid thumbnail exists to avoid, and warming on hover means the
   // bytes are already in hand when the drag starts, so the drag adds no fetch
   // and no latency of its own.
+  const blobsPending = new Map();  // id -> Promise<void>
+  const thumbsPending = new Map(); // id -> Promise<void>
   const prefetchFull = c => {
     if (blobs.has(c.id)) return Promise.resolve();
-    return fetchMedia(c.file)
+    if (blobsPending.has(c.id)) return blobsPending.get(c.id);
+    const p = fetchMedia(c.file)
       .then(blob => { blobs.set(c.id, blob); evictCaches(); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => blobsPending.delete(c.id));
+    blobsPending.set(c.id, p);
+    return p;
   };
   const prefetchThumb = c => {
     if (thumbs.has(c.id)) return Promise.resolve();
-    return fetchMedia(`t-${c.file}`)
+    if (thumbsPending.has(c.id)) return thumbsPending.get(c.id);
+    const p = fetchMedia(`t-${c.file}`)
       .then(blob => {
         thumbs.set(c.id, URL.createObjectURL(blob));
         evictCaches();
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => thumbsPending.delete(c.id));
+    thumbsPending.set(c.id, p);
+    return p;
   };
 
   // cap the caches — a stored original is hundreds of KB to a few MB and the
@@ -403,7 +413,7 @@
       const cell = document.createElement('div');
       cell.className = 'cell';
       cell.dataset.file = c.file;
-      const when = localTime(c.created_at);
+      const when = c._when || (c._when = localTime(c.created_at));
       const isPc = c.origin === 'pc';
       cell.title = `#${c.id} · ${isPc ? 'PC' : 'Phone'}${when ? ` · ${when}` : ''} — drag it or press Ctrl+Enter into the chat box, or click to copy`;
       const img = document.createElement('img');
@@ -593,8 +603,12 @@
     const q = trayFilterQuery;
     const visible = q
       ? captures.filter(c => {
-          const orig = c.origin === 'pc' ? 'pc' : 'phone';
-          const hay = `#${c.id} ${c.file || ''} ${orig} ${localTime(c.created_at)}`.toLowerCase();
+          let hay = c._searchHay;
+          if (!hay) {
+            const orig = c.origin === 'pc' ? 'pc' : 'phone';
+            const when = c._when || (c._when = localTime(c.created_at));
+            hay = c._searchHay = `#${c.id} ${c.file || ''} ${orig} ${when}`.toLowerCase();
+          }
           return hay.includes(q);
         })
       : captures;
@@ -739,8 +753,6 @@
       captures = caps;
       render();
       if (open) { placePanel(); setStatus(IDLE_STATUS); }
-      // warm only the newest few full-size images — the rest load on hover
-      captures.slice(0, 5).forEach(prefetchFull);
     } catch {
       lastLoadFailed = true;
       // only clear the UI if we previously had data (don't flash on first tick)
@@ -1205,8 +1217,12 @@
     const q = trayFilterQuery;
     const visible = q
       ? allTexts.filter(t => {
-          const src = t.source === 'pc' ? 'pc' : 'phone';
-          return `${t.body || ''} #${t.id} ${src}`.toLowerCase().includes(q);
+          let hay = t._searchHay;
+          if (!hay) {
+            const src = t.source === 'pc' ? 'pc' : 'phone';
+            hay = t._searchHay = `${t.body || ''} #${t.id} ${src}`.toLowerCase();
+          }
+          return hay.includes(q);
         })
       : allTexts;
     if (!visible.length) {

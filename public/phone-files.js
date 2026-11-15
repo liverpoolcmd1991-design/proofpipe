@@ -73,7 +73,7 @@ const PPPhoneFiles = (() => {
     }
 
     async function unpoisonAll() {
-      if (!fileDb) return 0;
+      if (!fileDb || !(await fqueueCount())) return 0;
       let revived = 0;
       for (const job of await fqueueAll()) {
         const fix = PPQueue.unpoison(job.value);
@@ -118,6 +118,7 @@ const PPPhoneFiles = (() => {
       if (fileFlushing || !fileDb) return;
       fileFlushing = true;
       try {
+        if (!(await fqueueCount())) return;
         const items = await fqueueAll();
         setTransferBatchRemaining(items.length);
         for (const job of items) {

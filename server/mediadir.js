@@ -94,12 +94,17 @@ export function registerMediaDir(app, ctx) {
       const src = { captures: cur.captures, files: cur.files, inbox: cur.inbox };
       const moved = []; // [from, to] pairs for best-effort rollback
       try {
+        const MOVE_CHUNK = 8;
         for (const k of Object.keys(src)) {
           let entries = [];
           try { entries = await fsp.readdir(src[k]); } catch { continue; }
-          for (const e of entries) {
-            await moveEntry(path.join(src[k], e), path.join(dst[k], e));
-            moved.push([path.join(dst[k], e), path.join(src[k], e)]);
+          for (let i = 0; i < entries.length; i += MOVE_CHUNK) {
+            await Promise.all(entries.slice(i, i + MOVE_CHUNK).map(async e => {
+              const from = path.join(src[k], e);
+              const to = path.join(dst[k], e);
+              await moveEntry(from, to);
+              moved.push([to, from]);
+            }));
           }
         }
       } catch (e) {

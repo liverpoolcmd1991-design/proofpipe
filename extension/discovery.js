@@ -104,13 +104,34 @@ const PPDiscovery = (() => {
   }
 
   async function fetchFirst(bases, path, init, timeoutMs = 4000) {
-    for (const base of bases) {
-      try {
-        const opts = { ...(init || {}) };
-        if (!opts.signal) opts.signal = AbortSignal.timeout(timeoutMs);
-        const r = await fetch(`${base}${path}`, opts);
-        if (r.ok) return { base, response: r };
-      } catch {}
+    const list = Array.isArray(bases) ? bases : [];
+    if (!list.length) return null;
+    const method = String(init?.method || 'GET').toUpperCase();
+    const idempotent = method === 'GET' || method === 'HEAD';
+    const tryOne = async base => {
+      const opts = { ...(init || {}) };
+      if (!opts.signal) opts.signal = AbortSignal.timeout(timeoutMs);
+      const r = await fetch(`${base}${path}`, opts);
+      if (r.ok) return { base, response: r };
+      throw new Error('not ok');
+    };
+    if (!idempotent) {
+      for (const base of list) {
+        try { return await tryOne(base); } catch {}
+      }
+      return null;
+    }
+    try { return await tryOne(list[0]); } catch {}
+    const rest = list.slice(1);
+    const httpRest = rest.filter(primaryHost);
+    const otherRest = rest.filter(b => !primaryHost(b));
+    for (const group of [httpRest, otherRest]) {
+      for (let i = 0; i < group.length; i += 6) {
+        if (init?.signal?.aborted) return null;
+        try {
+          return await Promise.any(group.slice(i, i + 6).map(tryOne));
+        } catch {}
+      }
     }
     return null;
   }

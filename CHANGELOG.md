@@ -2,6 +2,16 @@
 
 All notable changes to ProofPipe are documented in this file.
 
+## [1.26.0] — 2026-11-15
+
+### Changed
+- **Server & SQLite Performance (`server.js`, `server/store.js`, `server/settings.js`, `server/captures.js`, `server/files.js`, `server/cleanup.js`, `server/mediadir.js`, `server/browser.js`)**: Converted `rotateCapture()` to single-pass `autoOrient().rotate(deg)` with incremental byte accounting, added a bounded 3-worker thumbnail queue, cached async asset-stamped HTML (`/` & `/phone`), eliminated sync `fs` checks on hot `/media/*` & browser detection paths, added SQLite indexes (`idx_texts_source_id`, `idx_texts_kind_id`, `idx_files_created_at`), skipped unused `recent` queries on default `/api/stats`, collapsed file batch-deletes into a single SQLite transaction, and bounded-parallelized retention/move loops.
+- **Desktop Workbench Rendering & Transfers (`public/app.js`, `public/style.css`, `public/toPng.js`)**: Replaced full DOM rebuilds with ID-keyed reconciliation in `renderCaptures()`, `renderFiles()`, and `renderTexts()`, added a 24 MB PNG LRU cache with in-flight deduplication and async `ClipboardItem` writes, added 2-worker concurrent uploads, lightbox neighbor prefetching, 350ms debounced SSE stats refreshes, pre-indexed release search haystacks, immediate `OffscreenCanvas` zeroing in `toPng.js`, and removed per-tile `backdrop-filter` compositor layers in the capture grid.
+- **Phone PWA Viewer, Outbox & Compositor (`public/phone-viewer.js`, `public/phone.js`, `public/phone-files.js`, `public/phone.css`)**: Cached `#viewer-stage` bounding rect on `touchstart`/`resize`/`orientationchange` for reflow-free pinch/pan gestures, bounded remote viewer full-res blobs to a 4-item LRU cleared on `hideViewer()`, switched `flushOutbox()` existence verification to lightweight `getKey()`, short-circuited empty IDB scans, zeroed temporary `tileUrl()` canvases, fixed multi-item `trimRecent()`, skipped redundant SSE-open and active-SSE `visibilitychange` reloads, and removed per-chip `backdrop-filter` blur inside horizontal strips.
+- **Chromium Extension Discovery, Caching & DOM Scans (`extension/`)**: Batched idempotent GET/HEAD fallback discovery in `discovery.js`, capped SW `prefetch` map to 4 entries with immediate eviction after `mediaBlob` consumption, deduplicated content-script `thumbsPending`/`blobsPending` fetches, removed eager 5x background full-res prefetches on tray poll, added popup `popupPngCache` LRU & promise deduplication, cached capture/text search haystacks across `content.js`/`popup.js`, replaced `querySelectorAll('*')` array allocations with `TreeWalker` shadow-host discovery in `paste-logic.js`, and removed per-cell `backdrop-filter` blur in `tray-ui.js`.
+
+---
+
 ## [1.25.0] — 2026-11-15
 
 ### Added

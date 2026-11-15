@@ -70,6 +70,30 @@ const PPPasteLogic = (() => {
   // pasted images as editor text, <img>, attachment chips (filename label),
   // canvas previews, or blob: URLs — ALL must be checked, editor length
   // alone false-negatived and fired every escalation (4x paste).
+  function findShadowHosts(limit = 128) {
+    const hosts = [];
+    try {
+      if (typeof document.createTreeWalker === 'function') {
+        const root = document.documentElement || document.body;
+        if (!root) return hosts;
+        const tw = document.createTreeWalker(root, 1);
+        let cur = tw.currentNode;
+        while (cur && hosts.length < limit) {
+          if (cur.shadowRoot) hosts.push(cur);
+          cur = tw.nextNode();
+        }
+        return hosts;
+      }
+      for (const el of document.querySelectorAll('*')) {
+        if (el.shadowRoot) {
+          hosts.push(el);
+          if (hosts.length >= limit) break;
+        }
+      }
+    } catch {}
+    return hosts;
+  }
+
   function snapshot(target) {
     const count = sel => document.querySelectorAll(sel).length;
     const localCount = sel => {
@@ -77,8 +101,7 @@ const PPPasteLogic = (() => {
     };
     // Discover shadow hosts ONCE per paste attempt, not once per animation
     // frame. New hosts are inspected directly from MutationRecords below.
-    let shadowHosts = [];
-    try { shadowHosts = [...document.querySelectorAll('*')].filter(el => el.shadowRoot).slice(0, 128); } catch {}
+    const shadowHosts = findShadowHosts(128);
     return {
       len: target.isContentEditable ? target.innerHTML.length : (target.value ?? '').length,
       imgs: count('img'),
@@ -116,10 +139,26 @@ const PPPasteLogic = (() => {
         // bounded discovery here preserves that edge case without a per-frame
         // whole-tree walk.
         if (!textFound) {
-          let seen = 0;
-          for (const el of document.querySelectorAll('*')) {
-            if (++seen > 128) break;
-            if (el.shadowRoot && el.shadowRoot.textContent.includes(fname)) { textFound = true; break; }
+          if (typeof document.createTreeWalker === 'function') {
+            try {
+              const root = document.documentElement || document.body;
+              if (root) {
+                const tw = document.createTreeWalker(root, 1);
+                let cur = tw.currentNode;
+                let seen = 0;
+                while (cur && seen < 128) {
+                  seen++;
+                  if (cur.shadowRoot && cur.shadowRoot.textContent.includes(fname)) { textFound = true; break; }
+                  cur = tw.nextNode();
+                }
+              }
+            } catch {}
+          } else {
+            let seen = 0;
+            for (const el of document.querySelectorAll('*')) {
+              if (++seen > 128) break;
+              if (el.shadowRoot && el.shadowRoot.textContent.includes(fname)) { textFound = true; break; }
+            }
           }
         }
       }

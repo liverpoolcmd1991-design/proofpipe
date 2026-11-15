@@ -347,6 +347,14 @@ async function outboxGet(key) {
     req.onerror = () => resolve(null);
   });
 }
+async function outboxExists(key) {
+  if (!idb) return false;
+  return new Promise(resolve => {
+    const req = idb.transaction('outbox').objectStore('outbox').getKey(key);
+    req.onsuccess = () => resolve(req.result !== undefined);
+    req.onerror = () => resolve(false);
+  });
+}
 async function outboxClear() {
   if (!idb) return;
   await new Promise(resolve => {
@@ -366,6 +374,7 @@ async function flushOutbox() {
   let last429 = 0;
   let usedLast = false;
   try {
+    if (!(await outboxCount())) return;
     const items = await outboxAll();
     if (!items.length) return;
     const CONC = 2;
@@ -380,7 +389,7 @@ async function flushOutbox() {
           continue;
         }
         try {
-          const stillThere = await outboxGet(job.key);
+          const stillThere = await outboxExists(job.key);
           if (!stillThere) continue;
         } catch { continue; }
         usedLast = true;
@@ -502,14 +511,22 @@ function attachTileSelectionGesture(w, tile) {
 }
 
 async function tileUrl(blob) {
+  let bmp = null;
+  let c = null;
   try {
-    const bmp = await createImageBitmap(blob, { resizeWidth: 240, resizeQuality: 'medium' });
-    const c = document.createElement('canvas');
+    bmp = await createImageBitmap(blob, { resizeWidth: 240, resizeQuality: 'medium' });
+    c = document.createElement('canvas');
     c.width = bmp.width; c.height = bmp.height;
     c.getContext('2d').drawImage(bmp, 0, 0);
     bmp.close && bmp.close();
-    return new Promise(res => c.toBlob(b => res(b ? URL.createObjectURL(b) : URL.createObjectURL(blob)), 'image/jpeg', 0.8));
+    bmp = null;
+    return await new Promise(res => c.toBlob(b => {
+      c.width = 0; c.height = 0;
+      res(b ? URL.createObjectURL(b) : URL.createObjectURL(blob));
+    }, 'image/jpeg', 0.8));
   } catch {
+    if (bmp && bmp.close) bmp.close();
+    if (c) { c.width = 0; c.height = 0; }
     return URL.createObjectURL(blob);
   }
 }
@@ -761,7 +778,7 @@ async function loadRecent(force = false) {
 $('#recent-retry')?.addEventListener('click', () => loadRecent(true));
 function trimRecent() {
   if (recentItems.length <= 100) return;
-  for (let i = recentItems.length - 1; i >= 0; i--) {
+  for (let i = recentItems.length - 1; i >= 0 && recentItems.length > 100; i--) {
     const old = recentItems[i];
     if (!old.sent) continue;
     recentItems.splice(i, 1);
@@ -770,7 +787,6 @@ function trimRecent() {
     revokeObjectUrl(old.tileUrl);
     revokeObjectUrl(old.url);
     revokeObjectUrl(old.fullUrl);
-    return;
   }
 }
 function removeRecentItem(item) {
@@ -1899,9 +1915,18 @@ updateInbox();
 
 // ---------- live updates from PC (paste/drop/text uploads) ----------
 try {
+  let sseHadDrop = false;
   const es = new EventSource(SERVER + '/events?device=phone');
-  es.onopen = () => { sseLive = true; everConnected = true; setStatus('ok', 'connected'); loadRecent(); };
+  es.onopen = () => {
+    const shouldReload = sseHadDrop || !$('#recent-error')?.classList.contains('hidden');
+    sseLive = true;
+    everConnected = true;
+    sseHadDrop = false;
+    setStatus('ok', 'connected');
+    if (shouldReload) loadRecent();
+  };
   es.onerror = () => {
+    if (sseLive || everConnected) sseHadDrop = true;
     sseLive = false;
     if (everConnected) setStatus('warn', 'reconnecting…');
     else { setStatus('off', 'not paired'); setStatusSub('scan the QR on your PC · same Wi-Fi'); }
@@ -2266,7 +2291,7 @@ $('#outbox-info').onclick = async () => {
 // ---------- one-time unpoison migration ----------
 async function runUnpoisonMigration() {
   let revived = 0;
-  if (idb) {
+  if (idb && (await outboxCount())) {
     const items = await outboxAll();
     for (const job of items) {
       const fix = PPQueue.unpoison(job.value);
@@ -2331,7 +2356,13 @@ async function runUnpoisonMigration() {
 
 addEventListener('online', () => checkServer());
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) { checkServer(); loadRecent(); loadTexts(); loadSettings(); }
+  if (document.hidden) return;
+  checkServer();
+  if (!sseLive) {
+    loadRecent();
+    loadTexts();
+  }
+  loadSettings();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');

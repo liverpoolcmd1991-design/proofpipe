@@ -106,7 +106,7 @@ export function initSettings({
     scheme,
     port,
   }) {
-    app.get('/api/stats', () => {
+    app.get('/api/stats', (req) => {
       let latest = null;
       let outboxSum = 0;
       const phoneList = [];
@@ -116,7 +116,7 @@ export function initSettings({
         phoneList.push(entry);
         if (!latest || p.lastSeen > latest.lastSeen) latest = entry;
       }
-      return {
+      const res = {
         version: ppVersion,
         count: stmts.countCaptures.get().c,
         bytes: bytes.total,
@@ -130,7 +130,9 @@ export function initSettings({
         phoneCount: phoneList.length,
         phones: phoneList,
         sseClients: sseClients.size,
-        recent: [
+      };
+      if (req.query?.include === 'recent') {
+        res.recent = [
           ...stmts.listCaptures.all(3).map(c => ({
             kind: 'capture', id: c.id, label: 'Capture',
             dir: c.origin === 'pc' ? 'pc' : 'phone', at: c.created_at,
@@ -139,8 +141,9 @@ export function initSettings({
             kind: 'file', id: f.id, label: f.name,
             dir: f.dir === 'phone' ? 'phone' : 'pc', at: f.created_at,
           })),
-        ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, 3),
-      };
+        ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, 3);
+      }
+      return res;
     });
 
     app.post('/api/open-latest', (req, reply) => {

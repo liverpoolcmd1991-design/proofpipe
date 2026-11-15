@@ -458,14 +458,57 @@ async function copyText(str) {
   }
 }
 
-async function copyCapturePng(file) {
-  try {
+const pcPngCache = new Map(); // file -> Blob
+const pcPngPending = new Map(); // file -> Promise<Blob>
+const PC_PNG_BUDGET = 24 * 1024 * 1024;
+let pcPngBytes = 0;
+
+function pcPngPut(file, png) {
+  if (pcPngCache.has(file)) {
+    pcPngBytes -= pcPngCache.get(file).size;
+    pcPngCache.delete(file);
+  }
+  pcPngCache.set(file, png);
+  pcPngBytes += png.size;
+  while (pcPngBytes > PC_PNG_BUDGET && pcPngCache.size > 1) {
+    const oldest = pcPngCache.keys().next().value;
+    pcPngBytes -= pcPngCache.get(oldest).size;
+    pcPngCache.delete(oldest);
+  }
+}
+
+function getCapturePng(file) {
+  const cached = pcPngCache.get(file);
+  if (cached) {
+    pcPngCache.delete(file);
+    pcPngCache.set(file, cached);
+    return Promise.resolve(cached);
+  }
+  const pending = pcPngPending.get(file);
+  if (pending) return pending;
+  const p = (async () => {
     const res = await fetch(`/media/${encodeURIComponent(file)}`);
     if (!res.ok) throw new Error('fetch failed');
     const blob = await res.blob();
     const pngBlob = typeof toPng === 'function' ? await toPng(blob) : blob;
+    pcPngPut(file, pngBlob);
+    return pngBlob;
+  })().finally(() => pcPngPending.delete(file));
+  pcPngPending.set(file, p);
+  p.catch(() => {});
+  return p;
+}
+
+async function copyCapturePng(file) {
+  try {
+    const pngPromise = getCapturePng(file);
     if (navigator.clipboard && window.ClipboardItem) {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngPromise })]);
+      } catch (e) {
+        if (!(e instanceof TypeError)) throw e;
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': await pngPromise })]);
+      }
       showToast('Copied PNG to clipboard');
     } else {
       showToast('Clipboard API unavailable');
@@ -502,8 +545,10 @@ function renderReleases() {
     const matchingChanges = rel.changes.filter(ch => {
       if (activeReleaseCategory !== 'all' && ch.scope !== activeReleaseCategory) return false;
       if (!q) return true;
-      const hay = `${rel.version} ${rel.headline} ${ch.title} ${ch.detail} ${SCOPE_LABELS[ch.scope] || ''}`.toLowerCase();
-      return hay.includes(q);
+      if (!ch._hay) {
+        ch._hay = `${rel.version} ${rel.headline} ${ch.title} ${ch.detail} ${SCOPE_LABELS[ch.scope] || ''}`.toLowerCase();
+      }
+      return ch._hay.includes(q);
     });
     if (matchingChanges.length > 0) {
       filtered.push({ ...rel, changes: matchingChanges });
@@ -619,6 +664,145 @@ function toggleCaptureSelected(id, tileEl, checkboxEl) {
   syncCaptureSelectionUI();
 }
 
+const captureTileById = new Map(); // capture.id -> { tile, img, badge, sizeSpan, timeSpan, dlLink, chk, cap }
+
+function syncSelectionOnTiles() {
+  for (const [id, entry] of captureTileById) {
+    const sel = selectedCaptures.has(id);
+    entry.tile.classList.toggle('selected', sel);
+    entry.chk.checked = sel;
+  }
+  syncCaptureSelectionUI();
+}
+
+function buildCaptureTile(cap) {
+  const isSelected = selectedCaptures.has(cap.id);
+  const tile = document.createElement('article');
+  tile.className = `cap-tile${isSelected ? ' selected' : ''}`;
+  tile.dataset.id = String(cap.id);
+
+  const thumbWrap = document.createElement('div');
+  thumbWrap.className = 'cap-thumb-wrap';
+
+  const selectWrap = document.createElement('label');
+  selectWrap.className = 'cap-select-wrap';
+  selectWrap.title = `Select capture #${cap.id}`;
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.className = 'pp-check cap-check';
+  chk.checked = isSelected;
+  chk.setAttribute('aria-label', `Select capture #${cap.id}`);
+  const entry = { tile, chk, cap };
+  chk.onchange = () => toggleCaptureSelected(entry.cap.id, tile, chk);
+  selectWrap.onclick = e => e.stopPropagation();
+  selectWrap.appendChild(chk);
+
+  thumbWrap.onclick = e => {
+    if (e.target.closest('.cap-hover-actions') || e.target.closest('.cap-select-wrap')) return;
+    if (captureSelectMode || selectedCaptures.size > 0) {
+      toggleCaptureSelected(entry.cap.id, tile, chk);
+      return;
+    }
+    const idx = filteredSortedCaptures().findIndex(c => c.id === entry.cap.id);
+    if (idx >= 0) openLightbox(idx);
+  };
+
+  const img = document.createElement('img');
+  img.loading = 'lazy';
+  img.decoding = 'async';
+  img.src = `/media/t-${encodeURIComponent(cap.file)}`;
+  img.alt = `Capture #${cap.id}`;
+  img.onerror = () => { img.src = `/media/${encodeURIComponent(entry.cap.file)}`; };
+
+  const badge = document.createElement('span');
+  const isPc = cap.origin === 'pc';
+  badge.className = `cap-badge ${isPc ? 'pc' : 'phone'}`;
+  badge.textContent = isPc ? 'PC' : 'Phone';
+
+  const hoverActions = document.createElement('div');
+  hoverActions.className = 'cap-hover-actions';
+
+  const phoneBtn = document.createElement('button');
+  phoneBtn.type = 'button';
+  phoneBtn.className = 'toolbtn';
+  phoneBtn.title = 'Pin capture to phone inbox';
+  phoneBtn.setAttribute('aria-label', 'Pin capture to phone inbox');
+  phoneBtn.innerHTML = '<i class="ic ic-phone"></i>';
+  phoneBtn.onclick = e => {
+    e.stopPropagation();
+    sendCaptureToPhone(entry.cap.file);
+  };
+
+  const dlLink = document.createElement('a');
+  dlLink.className = 'toolbtn';
+  dlLink.href = `/media/${encodeURIComponent(cap.file)}`;
+  dlLink.download = cap.file;
+  dlLink.title = 'Download original';
+  dlLink.setAttribute('aria-label', 'Download original');
+  dlLink.innerHTML = '<i class="ic ic-download"></i>';
+  dlLink.onclick = e => e.stopPropagation();
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'toolbtn cap-del-btn';
+  delBtn.title = 'Delete capture';
+  delBtn.setAttribute('aria-label', 'Delete capture');
+  delBtn.innerHTML = '<i class="ic ic-trash"></i>';
+  delBtn.onclick = e => {
+    e.stopPropagation();
+    deleteCapture(entry.cap.id);
+  };
+
+  hoverActions.append(phoneBtn, dlLink, delBtn);
+  thumbWrap.append(img, badge, hoverActions, selectWrap);
+
+  const footer = document.createElement('div');
+  footer.className = 'cap-footer';
+
+  const meta = document.createElement('div');
+  meta.className = 'cap-meta';
+  const sizeSpan = document.createElement('span');
+  sizeSpan.className = 'cap-meta-size mono';
+  sizeSpan.textContent = fmtBytes(cap.bytes || 0);
+  const timeSpan = document.createElement('span');
+  timeSpan.textContent = fmtTime(cap.created_at);
+  meta.append(sizeSpan, timeSpan);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'btn primary-tinted cap-copy-btn';
+  copyBtn.title = 'Copy PNG to clipboard';
+  copyBtn.innerHTML = '<i class="ic ic-copy"></i> Copy';
+  copyBtn.onclick = () => copyCapturePng(entry.cap.file);
+
+  footer.append(meta, copyBtn);
+  tile.append(thumbWrap, footer);
+
+  entry.img = img;
+  entry.badge = badge;
+  entry.sizeSpan = sizeSpan;
+  entry.timeSpan = timeSpan;
+  entry.dlLink = dlLink;
+  return entry;
+}
+
+function updateCaptureTile(entry, cap) {
+  const prevFile = entry.cap.file;
+  entry.cap = cap;
+  const sel = selectedCaptures.has(cap.id);
+  entry.tile.classList.toggle('selected', sel);
+  entry.chk.checked = sel;
+  if (prevFile !== cap.file) {
+    entry.img.src = `/media/t-${encodeURIComponent(cap.file)}`;
+    entry.dlLink.href = `/media/${encodeURIComponent(cap.file)}`;
+    entry.dlLink.download = cap.file;
+  }
+  const isPc = cap.origin === 'pc';
+  entry.badge.className = `cap-badge ${isPc ? 'pc' : 'phone'}`;
+  entry.badge.textContent = isPc ? 'PC' : 'Phone';
+  entry.sizeSpan.textContent = fmtBytes(cap.bytes || 0);
+}
+
 function renderCaptures() {
   const grid = $('#grid');
   const empty = $('#grid-empty');
@@ -637,9 +821,10 @@ function renderCaptures() {
   if (clearBtn) clearBtn.classList.toggle('hidden', captures.length === 0);
   syncCaptureSelectionUI();
   grid.classList.toggle('compact', compactGrid);
-  grid.replaceChildren();
 
   if (!capturesLoaded) {
+    captureTileById.clear();
+    grid.replaceChildren();
     empty?.classList.add('hidden');
     moreWrap?.classList.add('hidden');
     for (let i = 0; i < 6; i++) {
@@ -652,7 +837,15 @@ function renderCaptures() {
     return;
   }
 
+  for (const child of [...grid.children]) {
+    if (child.classList.contains('cap-skel')) child.remove();
+  }
+
   if (!list.length) {
+    for (const [id, entry] of captureTileById) {
+      entry.tile.remove();
+      captureTileById.delete(id);
+    }
     empty?.classList.remove('hidden');
     moreWrap?.classList.add('hidden');
     return;
@@ -660,107 +853,27 @@ function renderCaptures() {
   empty?.classList.add('hidden');
   moreWrap?.classList.toggle('hidden', captures.length < 100);
 
+  const visibleIds = new Set(list.map(c => c.id));
+  for (const [id, entry] of captureTileById) {
+    if (!visibleIds.has(id)) {
+      entry.tile.remove();
+      captureTileById.delete(id);
+    }
+  }
+
+  let prev = null;
   list.forEach((cap, idx) => {
-    const isSelected = selectedCaptures.has(cap.id);
-    const tile = document.createElement('article');
-    tile.className = `cap-tile${isSelected ? ' selected' : ''}`;
-    tile.dataset.id = String(cap.id);
-    tile.style.animationDelay = `${Math.min(idx * 12, 120)}ms`;
-
-    const thumbWrap = document.createElement('div');
-    thumbWrap.className = 'cap-thumb-wrap';
-
-    const selectWrap = document.createElement('label');
-    selectWrap.className = 'cap-select-wrap';
-    selectWrap.title = `Select capture #${cap.id}`;
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.className = 'pp-check cap-check';
-    chk.checked = isSelected;
-    chk.setAttribute('aria-label', `Select capture #${cap.id}`);
-    chk.onchange = () => toggleCaptureSelected(cap.id, tile, chk);
-    selectWrap.onclick = e => e.stopPropagation();
-    selectWrap.appendChild(chk);
-
-    thumbWrap.onclick = e => {
-      if (e.target.closest('.cap-hover-actions') || e.target.closest('.cap-select-wrap')) return;
-      if (captureSelectMode || selectedCaptures.size > 0) {
-        toggleCaptureSelected(cap.id, tile, chk);
-        return;
-      }
-      openLightbox(idx);
-    };
-
-    const img = document.createElement('img');
-    img.loading = 'lazy';
-    img.src = `/media/t-${encodeURIComponent(cap.file)}`;
-    img.alt = `Capture #${cap.id}`;
-    img.onerror = () => { img.src = `/media/${encodeURIComponent(cap.file)}`; };
-
-    const badge = document.createElement('span');
-    const isPc = cap.origin === 'pc';
-    badge.className = `cap-badge ${isPc ? 'pc' : 'phone'}`;
-    badge.textContent = isPc ? 'PC' : 'Phone';
-
-    const hoverActions = document.createElement('div');
-    hoverActions.className = 'cap-hover-actions';
-
-    const phoneBtn = document.createElement('button');
-    phoneBtn.type = 'button';
-    phoneBtn.className = 'toolbtn';
-    phoneBtn.title = 'Pin capture to phone inbox';
-    phoneBtn.setAttribute('aria-label', 'Pin capture to phone inbox');
-    phoneBtn.innerHTML = '<i class="ic ic-phone"></i>';
-    phoneBtn.onclick = e => {
-      e.stopPropagation();
-      sendCaptureToPhone(cap.file);
-    };
-
-    const dlLink = document.createElement('a');
-    dlLink.className = 'toolbtn';
-    dlLink.href = `/media/${encodeURIComponent(cap.file)}`;
-    dlLink.download = cap.file;
-    dlLink.title = 'Download original';
-    dlLink.setAttribute('aria-label', 'Download original');
-    dlLink.innerHTML = '<i class="ic ic-download"></i>';
-    dlLink.onclick = e => e.stopPropagation();
-
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'toolbtn cap-del-btn';
-    delBtn.title = 'Delete capture';
-    delBtn.setAttribute('aria-label', 'Delete capture');
-    delBtn.innerHTML = '<i class="ic ic-trash"></i>';
-    delBtn.onclick = e => {
-      e.stopPropagation();
-      deleteCapture(cap.id);
-    };
-
-    hoverActions.append(phoneBtn, dlLink, delBtn);
-    thumbWrap.append(img, badge, hoverActions, selectWrap);
-
-    const footer = document.createElement('div');
-    footer.className = 'cap-footer';
-
-    const meta = document.createElement('div');
-    meta.className = 'cap-meta';
-    const sizeSpan = document.createElement('span');
-    sizeSpan.className = 'cap-meta-size mono';
-    sizeSpan.textContent = fmtBytes(cap.bytes || 0);
-    const timeSpan = document.createElement('span');
-    timeSpan.textContent = fmtTime(cap.created_at);
-    meta.append(sizeSpan, timeSpan);
-
-    const copyBtn = document.createElement('button');
-    copyBtn.type = 'button';
-    copyBtn.className = 'btn primary-tinted cap-copy-btn';
-    copyBtn.title = 'Copy PNG to clipboard';
-    copyBtn.innerHTML = '<i class="ic ic-copy"></i> Copy';
-    copyBtn.onclick = () => copyCapturePng(cap.file);
-
-    footer.append(meta, copyBtn);
-    tile.append(thumbWrap, footer);
-    grid.appendChild(tile);
+    let entry = captureTileById.get(cap.id);
+    if (!entry) {
+      entry = buildCaptureTile(cap);
+      entry.tile.style.animationDelay = `${Math.min(idx * 12, 120)}ms`;
+      captureTileById.set(cap.id, entry);
+    } else {
+      updateCaptureTile(entry, cap);
+    }
+    const wantNext = prev ? prev.nextSibling : grid.firstChild;
+    if (entry.tile !== wantNext) grid.insertBefore(entry.tile, wantNext);
+    prev = entry.tile;
   });
 }
 
@@ -840,6 +953,21 @@ function syncLightboxHeader(cap, idx, list) {
   }
 }
 
+const lightboxPrefetched = new Set();
+function prefetchLightboxNeighbors(list, idx) {
+  for (const offset of [-1, 1]) {
+    const n = list[idx + offset];
+    if (!n || lightboxPrefetched.has(n.file)) continue;
+    lightboxPrefetched.add(n.file);
+    if (lightboxPrefetched.size > 24) {
+      lightboxPrefetched.delete(lightboxPrefetched.keys().next().value);
+    }
+    const pre = new Image();
+    pre.decoding = 'async';
+    pre.src = `/media/${encodeURIComponent(n.file)}`;
+  }
+}
+
 function openLightbox(idx) {
   const list = filteredSortedCaptures();
   if (idx < 0 || idx >= list.length) return;
@@ -864,6 +992,7 @@ function openLightbox(idx) {
   syncLightboxHeader(cap, idx, list);
   lb.classList.remove('hidden');
   if (wasHidden) activateModalFocus(lb, $('#lb-close'));
+  prefetchLightboxNeighbors(list, idx);
 }
 
 function closeLightbox() {
@@ -950,6 +1079,84 @@ function syncFileSelectionUI() {
   }
 }
 
+const fileRowById = new Map();
+
+function buildFileRow(f) {
+  const row = document.createElement('div');
+  row.className = 'file-row';
+
+  const left = document.createElement('div');
+  left.className = 'file-row-left';
+
+  const chk = document.createElement('input');
+  chk.type = 'checkbox';
+  chk.className = 'pp-check';
+  chk.checked = selectedFiles.has(f.id);
+  chk.setAttribute('aria-label', `Select ${f.name}`);
+  chk.onchange = () => {
+    if (chk.checked) selectedFiles.add(f.id);
+    else selectedFiles.delete(f.id);
+    syncFileSelectionUI();
+  };
+
+  const name = document.createElement('span');
+  name.className = 'file-name';
+  name.textContent = f.name;
+
+  const sub = document.createElement('span');
+  sub.className = 'file-sub';
+  sub.textContent = `${f.dir === 'phone' ? 'Phone → PC' : 'PC → Phone'} · ${fmtBytes(f.bytes || 0)} · ${fmtTime(f.created_at)}`;
+
+  left.append(chk, name, sub);
+
+  const actions = document.createElement('div');
+  actions.className = 'file-row-actions';
+
+  const dl = document.createElement('a');
+  dl.className = 'toolbtn';
+  dl.href = `/file/${f.id}`;
+  dl.download = f.name;
+  dl.title = 'Save file';
+  dl.innerHTML = '<i class="ic ic-download"></i> Save';
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'toolbtn icon-btn';
+  del.title = 'Delete file';
+  del.setAttribute('aria-label', `Delete ${f.name}`);
+  del.innerHTML = '<i class="ic ic-trash"></i>';
+  del.onclick = () => {
+    const idx = files.findIndex(x => x.id === f.id);
+    if (idx === -1) return;
+    const removed = files[idx];
+    files.splice(idx, 1);
+    selectedFiles.delete(f.id);
+    renderFiles();
+
+    startPcUndo({
+      msg: `Removed ${removed.name}`,
+      restore: () => {
+        if (!files.some(x => x.id === removed.id)) {
+          files.splice(Math.min(idx, files.length), 0, removed);
+          renderFiles();
+        }
+      },
+      perform: async () => {
+        try {
+          await fetch(`/api/files/${f.id}`, { method: 'DELETE' });
+          scheduleStats();
+        } catch {
+          loadFiles();
+        }
+      },
+    });
+  };
+
+  actions.append(dl, del);
+  row.append(left, actions);
+  return { row, chk };
+}
+
 function renderFiles() {
   const listEl = $('#file-list');
   const emptyEl = $('#files-empty');
@@ -964,8 +1171,9 @@ function renderFiles() {
   }
   syncFileSelectionUI();
 
-  listEl.replaceChildren();
   if (!filesLoaded) {
+    fileRowById.clear();
+    listEl.replaceChildren();
     emptyEl?.classList.add('hidden');
     for (let i = 0; i < 3; i++) {
       const sk = document.createElement('div');
@@ -975,86 +1183,39 @@ function renderFiles() {
     }
     return;
   }
+  for (const child of [...listEl.children]) {
+    if (child.classList.contains('file-skel')) child.remove();
+  }
   if (!files.length) {
+    for (const [id, entry] of fileRowById) {
+      entry.row.remove();
+      fileRowById.delete(id);
+    }
     emptyEl?.classList.remove('hidden');
     return;
   }
   emptyEl?.classList.add('hidden');
 
+  const visibleIds = new Set(files.map(f => f.id));
+  for (const [id, entry] of fileRowById) {
+    if (!visibleIds.has(id)) {
+      entry.row.remove();
+      fileRowById.delete(id);
+    }
+  }
+
+  let prev = null;
   for (const f of files) {
-    const row = document.createElement('div');
-    row.className = 'file-row';
-
-    const left = document.createElement('div');
-    left.className = 'file-row-left';
-
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.className = 'pp-check';
-    chk.checked = selectedFiles.has(f.id);
-    chk.setAttribute('aria-label', `Select ${f.name}`);
-    chk.onchange = () => {
-      if (chk.checked) selectedFiles.add(f.id);
-      else selectedFiles.delete(f.id);
-      syncFileSelectionUI();
-    };
-
-    const name = document.createElement('span');
-    name.className = 'file-name';
-    name.textContent = f.name;
-
-    const sub = document.createElement('span');
-    sub.className = 'file-sub';
-    sub.textContent = `${f.dir === 'phone' ? 'Phone → PC' : 'PC → Phone'} · ${fmtBytes(f.bytes || 0)} · ${fmtTime(f.created_at)}`;
-
-    left.append(chk, name, sub);
-
-    const actions = document.createElement('div');
-    actions.className = 'file-row-actions';
-
-    const dl = document.createElement('a');
-    dl.className = 'toolbtn';
-    dl.href = `/file/${f.id}`;
-    dl.download = f.name;
-    dl.title = 'Save file';
-    dl.innerHTML = '<i class="ic ic-download"></i> Save';
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'toolbtn icon-btn';
-    del.title = 'Delete file';
-    del.setAttribute('aria-label', `Delete ${f.name}`);
-    del.innerHTML = '<i class="ic ic-trash"></i>';
-    del.onclick = () => {
-      const idx = files.findIndex(x => x.id === f.id);
-      if (idx === -1) return;
-      const removed = files[idx];
-      files.splice(idx, 1);
-      selectedFiles.delete(f.id);
-      renderFiles();
-
-      startPcUndo({
-        msg: `Removed ${removed.name}`,
-        restore: () => {
-          if (!files.some(x => x.id === removed.id)) {
-            files.splice(Math.min(idx, files.length), 0, removed);
-            renderFiles();
-          }
-        },
-        perform: async () => {
-          try {
-            await fetch(`/api/files/${f.id}`, { method: 'DELETE' });
-            loadStats();
-          } catch {
-            loadFiles();
-          }
-        },
-      });
-    };
-
-    actions.append(dl, del);
-    row.append(left, actions);
-    listEl.appendChild(row);
+    let entry = fileRowById.get(f.id);
+    if (!entry) {
+      entry = buildFileRow(f);
+      fileRowById.set(f.id, entry);
+    } else {
+      entry.chk.checked = selectedFiles.has(f.id);
+    }
+    const wantNext = prev ? prev.nextSibling : listEl.firstChild;
+    if (entry.row !== wantNext) listEl.insertBefore(entry.row, wantNext);
+    prev = entry.row;
   }
 }
 
@@ -1062,6 +1223,7 @@ function isUrlText(str) {
   return /^https?:\/\/\S+$/i.test(String(str || '').trim());
 }
 
+let renderedTextsSig = null;
 function renderTexts() {
   const recentSec = $('#text-recent');
   const recentRows = $('#text-recent-rows');
@@ -1072,6 +1234,10 @@ function renderTexts() {
 
   if (countBadge) countBadge.textContent = String(plainTexts.length);
   if (clearBtn) clearBtn.classList.toggle('hidden', plainTexts.length === 0);
+
+  const nextSig = plainTexts.map(t => `${t.id}:${t.source}:${t.body}`).join('\n');
+  if (nextSig === renderedTextsSig) return;
+  renderedTextsSig = nextSig;
 
   if (recentSec && recentRows) {
     recentRows.replaceChildren();
@@ -1285,6 +1451,12 @@ async function loadTexts() {
     texts = await r.json();
     renderTexts();
   } catch {}
+}
+
+let statsTimer = null;
+function scheduleStats(delay = 350) {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(() => { statsTimer = null; loadStats(); }, delay);
 }
 
 async function loadStats() {
@@ -1509,7 +1681,7 @@ function connectSse(forceReset = false) {
       } else {
         loadCaptures();
       }
-      loadStats();
+      scheduleStats();
     } else if (type === 'capture-updated') {
       if (msg?.capture && msg.capture.id != null) {
         const idx = captures.findIndex(c => c.id === msg.capture.id);
@@ -1523,7 +1695,7 @@ function connectSse(forceReset = false) {
       } else {
         loadCaptures();
       }
-      loadStats();
+      scheduleStats();
     } else if (type === 'deleted') {
       if (msg?.id === 'all') {
         captures = [];
@@ -1547,7 +1719,7 @@ function connectSse(forceReset = false) {
       } else {
         loadCaptures();
       }
-      loadStats();
+      scheduleStats();
     } else if (type === 'file') {
       if (msg?.row && msg.row.id != null) {
         if (!files.some(f => f.id === msg.row.id)) {
@@ -1557,7 +1729,7 @@ function connectSse(forceReset = false) {
       } else {
         loadFiles();
       }
-      loadStats();
+      scheduleStats();
     } else if (type === 'file-deleted') {
       if (msg?.id === 'all') {
         files = [];
@@ -1573,14 +1745,14 @@ function connectSse(forceReset = false) {
       } else {
         loadFiles();
       }
-      loadStats();
+      scheduleStats();
     } else if (type === 'text' || type === 'text-deleted') {
       loadTexts();
     } else if (type === 'settings') {
       applySettingsBundle(msg);
-      loadStats();
+      scheduleStats();
     } else if (type === 'phone') {
-      loadStats();
+      scheduleStats();
     } else if (type === 'open-latest') {
       if (captures.length) openLightbox(0);
     }
@@ -1793,7 +1965,7 @@ function wireEvents() {
   $('#captures-select-btn')?.addEventListener('click', () => {
     captureSelectMode = !captureSelectMode;
     if (!captureSelectMode) selectedCaptures.clear();
-    renderCaptures();
+    syncSelectionOnTiles();
   });
 
   $('#captures-select-all')?.addEventListener('click', () => {
@@ -1805,7 +1977,7 @@ function wireEvents() {
       captureSelectMode = true;
       for (const c of visible) selectedCaptures.add(c.id);
     }
-    renderCaptures();
+    syncSelectionOnTiles();
   });
 
   $('#captures-delete-selected')?.addEventListener('click', async () => {
@@ -1839,13 +2011,24 @@ function wireEvents() {
     }
   });
 
+  const runUploadWorkers = async (list, workerFn, concurrency = 2) => {
+    let idx = 0;
+    const worker = async () => {
+      while (idx < list.length) {
+        const f = list[idx++];
+        await workerFn(f);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, list.length) }, worker));
+  };
+
   $('#pc-upload-input')?.addEventListener('change', async e => {
     const list = [...(e.target.files || [])];
     e.target.value = '';
     if (!list.length) return;
     pcTransferTotal = list.length;
     pcTransferDone = 0;
-    for (const f of list) await uploadPhotoBlob(f, f.name);
+    await runUploadWorkers(list, f => uploadPhotoBlob(f, f.name));
   });
 
   $('#pc-file-input')?.addEventListener('change', async e => {
@@ -1854,7 +2037,7 @@ function wireEvents() {
     if (!list.length) return;
     pcTransferTotal = list.length;
     pcTransferDone = 0;
-    for (const f of list) await uploadPcFile(f);
+    await runUploadWorkers(list, f => uploadPcFile(f));
   });
 
   $('#clear-captures')?.addEventListener('click', async () => {
@@ -2180,10 +2363,7 @@ function wireEvents() {
     if (!dropped.length) return;
     pcTransferTotal = dropped.length;
     pcTransferDone = 0;
-    for (const f of dropped) {
-      if (f.type.startsWith('image/')) await uploadPhotoBlob(f, f.name);
-      else await uploadPcFile(f);
-    }
+    await runUploadWorkers(dropped, f => (f.type.startsWith('image/') ? uploadPhotoBlob(f, f.name) : uploadPcFile(f)));
   });
 }
 

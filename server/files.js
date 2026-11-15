@@ -163,16 +163,28 @@ export function registerFiles(app, ctx) {
       return reply.code(400).send({ error: 'ids must be an array' });
     }
     if (ids) {
-      const rows = ids.map(id => stmts.getFile.get(id)).filter(Boolean);
+      const { files: FILES } = paths();
+      const rows = db.transaction(() => {
+        const r = ids.map(id => stmts.getFile.get(id)).filter(Boolean);
+        for (const row of r) stmts.deleteFile.run(String(row.id));
+        return r;
+      })();
+      if (!rows.length) return { ok: true, deleted: 0, failed: 0 };
       let failed = 0;
+      let removedBytes = 0;
       const CHUNK = 32;
       for (let i = 0; i < rows.length; i += CHUNK) {
-        const oks = await Promise.all(
-          rows.slice(i, i + CHUNK).map(row => cleanup.removeFileRow(row, { silent: true })),
-        );
-        failed += oks.filter(ok => !ok).length;
+        await Promise.all(rows.slice(i, i + CHUNK).map(async row => {
+          removedBytes += row.bytes || 0;
+          const err = await rmWithRetry(path.join(FILES, row.file));
+          if (err) {
+            failed++;
+            try { bytes.addFiles((await fsp.stat(path.join(FILES, row.file))).size); } catch {}
+          }
+        }));
       }
-      if (rows.length) notify('file-deleted', { ids: rows.map(r => Number(r.id)) });
+      if (removedBytes) bytes.subFiles(removedBytes);
+      notify('file-deleted', { ids: rows.map(r => Number(r.id)) });
       return { ok: failed === 0, deleted: rows.length, failed };
     }
     const rows = db.transaction(() => {

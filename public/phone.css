@@ -342,11 +342,9 @@ input, textarea, select, .text-chip .chip-url, .text-chip.chip-manual {
 .media-chip, .file-chip {
   flex:none; display:flex; align-items:center; gap:10px;
   width:min(76vw, 248px); max-width:min(76vw, 248px); min-height:58px;
-  background:var(--card); border:1px solid var(--ctl);
+  background:rgba(18, 25, 44, 0.86); border:1px solid var(--ctl);
   border-color:var(--glass-border);
   border-radius:12px;
-  -webkit-backdrop-filter:saturate(200%) blur(28px);
-  backdrop-filter:saturate(200%) blur(28px);
   padding:8px; cursor:pointer; touch-action:manipulation;
   font-size:13px;
 }
@@ -522,11 +520,9 @@ body.kb-open .text-row {
 }
 .text-chip {
   flex:none; max-width:190px;
-  background:var(--card); border:1px solid var(--ctl);
+  background:rgba(18, 25, 44, 0.86); border:1px solid var(--ctl);
   border-color:var(--glass-border);
   border-radius:999px;
-  -webkit-backdrop-filter:saturate(200%) blur(28px);
-  backdrop-filter:saturate(200%) blur(28px);
   padding:10px 14px; min-height:44px; font-size:13px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;
   touch-action:manipulation;

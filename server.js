@@ -49,14 +49,14 @@ db.pragma('cache_size = -16000');
 const PP_VERSION = 'v' + JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
 
 const stampCache = new Map();
-const assetStamp = (file) => {
+const assetStamp = async (file) => {
   try {
     const fp = path.join(ROOT, 'public', file);
-    const st = fs.statSync(fp);
+    const st = await fsp.stat(fp);
     const key = `${st.mtimeMs}:${st.size}`;
     const hit = stampCache.get(file);
     if (hit && hit.key === key) return hit.stamp;
-    const stamp = createHash('sha1').update(fs.readFileSync(fp)).digest('hex').slice(0, 10);
+    const stamp = createHash('sha1').update(await fsp.readFile(fp)).digest('hex').slice(0, 10);
     stampCache.set(file, { key, stamp });
     return stamp;
   } catch {
@@ -146,6 +146,8 @@ CREATE TABLE IF NOT EXISTS texts (
   created_at TEXT DEFAULT (datetime('now')),
   kind TEXT DEFAULT 'text'
 );
+CREATE INDEX IF NOT EXISTS idx_texts_source_id ON texts(source, id DESC);
+CREATE INDEX IF NOT EXISTS idx_texts_kind_id ON texts(kind, id DESC);
 `);
 
 db.exec(`
@@ -158,6 +160,7 @@ CREATE TABLE IF NOT EXISTS files (
   dir TEXT DEFAULT 'pc',
   created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_files_created_at ON files(created_at);
 `);
 
 const CAPTURE_COLS = 'id, file, created_at, bytes, origin';
@@ -189,6 +192,8 @@ const stmts = {
   deleteTextsBySource: db.prepare('DELETE FROM texts WHERE source = ?'),
   deleteTextById: db.prepare('DELETE FROM texts WHERE id = ?'),
   deleteTextsForCapture: db.prepare('DELETE FROM texts WHERE instr(body, ?) > 0'),
+  deleteAllMediaTexts: db.prepare("DELETE FROM texts WHERE kind = 'media' OR instr(body, '/media/') > 0"),
+  countMediaTexts: db.prepare("SELECT COUNT(*) AS c FROM texts WHERE kind = 'media' OR instr(body, '/media/') > 0"),
   deleteAllTexts: db.prepare('DELETE FROM texts'),
   updateCaptureFileAndBytes: db.prepare('UPDATE captures SET file = ?, bytes = ? WHERE id = ?'),
   updateTextBodyByMedia: db.prepare('UPDATE texts SET body = replace(body, ?, ?) WHERE instr(body, ?) > 0'),
@@ -339,20 +344,35 @@ await app.register(fastifyStatic, {
 
 let indexHtml = null;
 let phoneHtml = null;
+let indexStamped = { key: '', html: '' };
+let phoneStamped = { key: '', html: '' };
 try { indexHtml = fs.readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8'); } catch {}
 app.get('/', async (_req, reply) => {
   const html = (indexHtml ??= await fsp.readFile(path.join(ROOT, 'public', 'index.html'), 'utf8'));
-  const stamped = html
-    .replace('__ASSET_STYLE__', assetStamp('style.css'))
-    .replace('__ASSET_SHARED__', assetStamp('shared.js'))
-    .replace('__ASSET_RELEASES__', assetStamp('releases.js'))
-    .replace('__ASSET_APP__', assetStamp('app.js'));
-  return reply.type('text/html').send(stamped.replaceAll('__PP_VERSION__', PP_VERSION));
+  const [sCss, sShared, sRel, sApp] = await Promise.all([
+    assetStamp('style.css'),
+    assetStamp('shared.js'),
+    assetStamp('releases.js'),
+    assetStamp('app.js'),
+  ]);
+  const key = `${PP_VERSION}|${sCss}|${sShared}|${sRel}|${sApp}`;
+  if (indexStamped.key !== key) {
+    const out = html
+      .replace('__ASSET_STYLE__', sCss)
+      .replace('__ASSET_SHARED__', sShared)
+      .replace('__ASSET_RELEASES__', sRel)
+      .replace('__ASSET_APP__', sApp)
+      .replaceAll('__PP_VERSION__', PP_VERSION);
+    indexStamped = { key, html: out };
+  }
+  return reply.type('text/html').send(indexStamped.html);
 });
 
-async function streamFile(req, reply, absPath, { contentType, disposition = null, immutable = true } = {}) {
-  let st;
-  try { st = await fsp.stat(absPath); } catch { return reply.code(404).send(); }
+async function streamFile(req, reply, absPath, { contentType, disposition = null, immutable = true, stat = null } = {}) {
+  let st = stat;
+  if (!st) {
+    try { st = await fsp.stat(absPath); } catch { return reply.code(404).send(); }
+  }
   if (!st.isFile()) return reply.code(404).send();
   const total = st.size;
   if (immutable) reply.header('Cache-Control', 'public, max-age=31536000, immutable');
@@ -396,14 +416,19 @@ app.get('/media/*', async (req, reply) => {
   const fp = path.resolve(CAPTURES, name);
   if (path.relative(CAPTURES, fp).startsWith('..') || path.dirname(fp) !== CAPTURES)
     return reply.code(404).send();
-  if (name.startsWith('t-') && !fs.existsSync(fp)) {
+  let st = null;
+  try { st = await fsp.stat(fp); } catch {}
+  if (st && st.isFile()) {
+    return streamFile(req, reply, fp, { contentType: mediaContentType(name), stat: st });
+  }
+  if (name.startsWith('t-')) {
     const thumb = await thumbFor(name.slice(2)).catch(() => null);
     if (!thumb) return reply.code(404).send();
     return reply.header('Cache-Control', 'public, max-age=31536000, immutable')
       .header('Content-Type', mediaContentType(name))
       .send(thumb);
   }
-  return streamFile(req, reply, fp, { contentType: mediaContentType(name) });
+  return reply.code(404).send();
 });
 
 const PORT = Number(process.env.PORT) || 8787;
@@ -484,14 +509,25 @@ registerSettingsRoutes(app, {
 
 app.get('/phone', async (_req, reply) => {
   const html = phoneHtml ??= await fsp.readFile(path.join(ROOT, 'public', 'phone.html'), 'utf8');
-  const stamped = html
-    .replace('/phone.css?v=__PP_VERSION__', `/phone.css?v=${assetStamp('phone.css')}`)
-    .replace('/shared.js?v=__PP_VERSION__', `/shared.js?v=${assetStamp('shared.js')}`)
-    .replace('/phone-viewer.js?v=__PP_VERSION__', `/phone-viewer.js?v=${assetStamp('phone-viewer.js')}`)
-    .replace('/phone-files.js?v=__PP_VERSION__', `/phone-files.js?v=${assetStamp('phone-files.js')}`)
-    .replace('/phone.js?v=__PP_VERSION__', `/phone.js?v=${assetStamp('phone.js')}`);
+  const [sCss, sShared, sViewer, sFiles, sPhone] = await Promise.all([
+    assetStamp('phone.css'),
+    assetStamp('shared.js'),
+    assetStamp('phone-viewer.js'),
+    assetStamp('phone-files.js'),
+    assetStamp('phone.js'),
+  ]);
+  const key = `${sCss}|${sShared}|${sViewer}|${sFiles}|${sPhone}`;
+  if (phoneStamped.key !== key) {
+    const out = html
+      .replace('/phone.css?v=__PP_VERSION__', `/phone.css?v=${sCss}`)
+      .replace('/shared.js?v=__PP_VERSION__', `/shared.js?v=${sShared}`)
+      .replace('/phone-viewer.js?v=__PP_VERSION__', `/phone-viewer.js?v=${sViewer}`)
+      .replace('/phone-files.js?v=__PP_VERSION__', `/phone-files.js?v=${sFiles}`)
+      .replace('/phone.js?v=__PP_VERSION__', `/phone.js?v=${sPhone}`);
+    phoneStamped = { key, html: out };
+  }
   reply.header('Cache-Control', 'no-store');
-  return reply.type('text/html').send(stamped);
+  return reply.type('text/html').send(phoneStamped.html);
 });
 
 app.listen({ port: PORT, host: '0.0.0.0' }).then(() => {

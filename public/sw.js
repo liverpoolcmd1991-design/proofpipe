@@ -1,7 +1,7 @@
 // Phone PWA service worker. Registered ONLY by phone.js; precaches the phone
 // shell under canonical query-stripped keys and serves network-first with
 // cache fallback when offline.
-const CACHE = 'proofpipe-v37';
+const CACHE = 'proofpipe-v38';
 const SHELL = [
   '/phone', '/phone.css', '/shared.js', '/queue.js', '/phone-viewer.js', '/phone-files.js', '/phone.js',
   '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png',

@@ -2,6 +2,28 @@
 // Keep this array ordered newest-first with `v<package.json version>` at index 0.
 const PP_RELEASES = [
   {
+    version: 'v1.26.0',
+    date: '2026-11',
+    headline: 'Full-Stack Performance & Memory Optimization Sweep',
+    changes: [
+      {
+        scope: 'server',
+        title: 'Single-Pass Rotation, Bounded Thumbnail Queue, Indexed Queries & Parallel Cleanups',
+        detail: 'Replaced double-encode buffer rotation with single-pass libvips autoOrient+rotate, added a bounded 3-worker thumbnail queue, cached async asset-stamped HTML, removed sync fs calls on hot routes, added composite SQLite indexes for text/file filtering, skipped unused /api/stats recent queries, batched file deletes in one transaction, and parallelized retention sweeps & media-dir moves. On the PC workbench, added DOM ID reconciliation for captures/files/messages, 24 MB PNG clipboard LRU caching with promise writes, 2-worker concurrent uploads, lightbox neighbor prefetching, debounced SSE stats refreshes, and compositor-layer reductions.',
+      },
+      {
+        scope: 'phone',
+        title: 'Zero-Reflow Touch Viewer, Bounded Blob LRU & Lean Outbox/PWA Sync',
+        detail: 'Cached viewer stage bounds on touchstart/resize to eliminate 120Hz touchmove layout reads, capped fetched remote full-resolution blobs via a 4-item LRU cleared on close, released temporary tile canvas backing stores, checked IndexedDB keys without re-cloning multi-MB blobs during outbox flush, skipped empty queue scans, fixed trimRecent() multi-item pruning, eliminated duplicate SSE/visibility reloads, and removed heavy blur filters from scrollable chips.',
+      },
+      {
+        scope: 'extension',
+        title: 'Batched Host Discovery, SW Prefetch Bounding & Light DOM Traversal',
+        detail: 'Batched idempotent GET/HEAD fallback origin discovery in groups of 6, capped service-worker media prefetch entries at 4 with immediate post-consume eviction, added popup PNG LRU caching and in-flight prefetch deduplication, removed eager 5x background full-image prefetches, cached filter search haystacks, switched shadow-host scanning to TreeWalker, and trimmed scrollable grid blur layers.',
+      },
+    ],
+  },
+  {
     version: 'v1.25.0',
     date: '2026-11',
     headline: 'Lightbox & Mobile Viewer Overhaul, Liquid Glass Swipe Toasts, Batch Selection, and Tray Quadrant Anchoring',

@@ -113,14 +113,12 @@ const PPTrayUI = (() => {
       .cell .id {
         pointer-events: none;
         position: absolute; bottom: 4px; left: 4px; font-size: 9px; font-weight: 650; color: #f5f7ff;
-        background: rgba(6, 9, 19, .74); border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(6, 9, 19, .86); border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 999px; padding: 0 5px; line-height: 14px;
-        -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
       }
       .cell-origin {
         pointer-events: none; position: absolute; top: 4px; left: 4px;
         font-size: 8.5px; font-weight: 700; line-height: 13px; padding: 0 5px; border-radius: 999px;
-        -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
       }
       .cell-origin.phone { background: rgba(14, 38, 22, 0.78); color: #5ee987; border: 1px solid rgba(48, 209, 88, 0.4); }
       .cell-origin.pc { background: rgba(14, 28, 52, 0.8); color: #7dd3fc; border: 1px solid rgba(96, 165, 250, 0.42); }

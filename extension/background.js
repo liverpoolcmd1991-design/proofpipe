@@ -144,10 +144,16 @@ async function fetchJSON(path) {
 // capture with nowhere to paste would otherwise pull a full-size image off the
 // server for nothing.
 // Bounded: entries are dropped once consumed.
+const PREFETCH_CAP = 4;
 const prefetch = new Map();
 function prefetchBlob(capture) {
   const file = capture && typeof capture.file === 'string' ? capture.file : '';
   if (!PPFiles.valid(file) || prefetch.has(file)) return;
+  while (prefetch.size >= PREFETCH_CAP) {
+    const oldest = prefetch.keys().next().value;
+    if (oldest === undefined) break;
+    prefetch.delete(oldest);
+  }
   const p = (async () => {
     const pinned = await ensureHost();
     if (!pinned) throw new Error('unreachable');
@@ -215,8 +221,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         // it already landed; if still in flight we simply join it.
         const pre = prefetch.get(file);
         if (pre) {
-          try { return sendResponse({ blob: await pre }); }
-          catch { prefetch.delete(file); } // prefetch failed — fall through to a fresh fetch
+          try {
+            const blob = await pre;
+            prefetch.delete(file);
+            return sendResponse({ blob });
+          } catch { prefetch.delete(file); } // prefetch failed — fall through to a fresh fetch
         }
         const blob = await (await serverFetch(`/media/${encodeURIComponent(file)}`)).blob();
         return sendResponse({ blob });

@@ -22,6 +22,9 @@ const PPPhoneViewer = (() => {
     let remoteFetchCtrl = null;
     let tapChromeTimer = 0;
     let dismissDragActive = false;
+    let stageRect = null;
+    const MAX_VIEWER_BLOBS = 4;
+    const remoteBlobLru = [];
 
     const viewerEl = $('#viewer');
     const viewerImg = $('#viewer-img');
@@ -29,8 +32,38 @@ const PPPhoneViewer = (() => {
     const viewerStage = $('#viewer-stage');
     const activeViewerItems = () => viewerItems || getRecentItems();
 
+    function invalidateStageRect() { stageRect = null; }
+    function getStageRect() {
+      if (!stageRect) stageRect = viewerStage.getBoundingClientRect();
+      return stageRect;
+    }
+
+    function releaseRemoteItemBlob(it) {
+      if (!it || !it.remote) return;
+      if (it.fullUrl && it.fullUrl !== it.thumbUrl && it.fullUrl !== it.url) {
+        revokeObjectUrl(it.fullUrl);
+      }
+      it.fullUrl = null;
+      it.blob = null;
+      const i = remoteBlobLru.indexOf(it);
+      if (i >= 0) remoteBlobLru.splice(i, 1);
+    }
+
+    function touchRemoteBlobLru(it) {
+      if (!it || !it.remote || !it.blob) return;
+      const idx = remoteBlobLru.indexOf(it);
+      if (idx >= 0) remoteBlobLru.splice(idx, 1);
+      remoteBlobLru.push(it);
+      while (remoteBlobLru.length > MAX_VIEWER_BLOBS) {
+        const victimIdx = remoteBlobLru.findIndex(x => x !== activeItem);
+        if (victimIdx < 0) break;
+        const [victim] = remoteBlobLru.splice(victimIdx, 1);
+        if (victim) releaseRemoteItemBlob(victim);
+      }
+    }
+
     function getFitMetrics() {
-      const r = viewerStage.getBoundingClientRect();
+      const r = getStageRect();
       const sw = r.width || 1;
       const sh = r.height || 1;
       const nw = viewerImg.naturalWidth || 0;
@@ -201,7 +234,7 @@ const PPPhoneViewer = (() => {
     }
 
     function viewerZoomTo(scale, cx, cy) {
-      const r = viewerStage.getBoundingClientRect();
+      const r = getStageRect();
       const targetX = cx != null ? cx - r.left : r.width / 2;
       const targetY = cy != null ? cy - r.top : r.height / 2;
       // Coordinates around stage center because transform-origin on #viewer-img is 50% 50%
@@ -271,6 +304,7 @@ const PPPhoneViewer = (() => {
 
       const wasHidden = viewerEl.classList.contains('hidden');
       viewerEl.classList.remove('hidden');
+      invalidateStageRect();
       if (wasHidden) {
         viewerReturnFocus = document.activeElement;
         trapPhone(viewerEl, $('#viewer-close'));
@@ -398,6 +432,7 @@ const PPPhoneViewer = (() => {
       if (item.blob && (!item.fullUrl || item.fullUrl === item.thumbUrl || item.fullUrl === item.url)) {
         item.fullUrl = URL.createObjectURL(item.blob);
       }
+      touchRemoteBlobLru(item);
       viewerBlob = item.blob || null;
       const finalSrc = item.fullUrl || item.url || item.thumbUrl || '';
       if (finalSrc && viewerImg.getAttribute('src') !== finalSrc) {
@@ -419,6 +454,9 @@ const PPPhoneViewer = (() => {
       viewerImg.src = '';
       viewerImg.style.scale = '';
       hideViewerUnder();
+      invalidateStageRect();
+      for (const it of [...remoteBlobLru]) releaseRemoteItemBlob(it);
+      remoteBlobLru.length = 0;
       activeItem = null;
       viewerBlob = null;
       viewerRetryFn = null;
@@ -610,12 +648,15 @@ const PPPhoneViewer = (() => {
       updateViewerMeta();
     });
 
-    addEventListener('resize', () => {
+    const onViewportChange = () => {
+      invalidateStageRect();
       if (viewerEl.classList.contains('hidden')) return;
       syncRotFitScale();
       clampViewerPan();
       applyViewerZoom();
-    });
+    };
+    addEventListener('resize', onViewportChange);
+    addEventListener('orientationchange', onViewportChange);
 
     // Touch gestures on viewer stage (midpoint pinch-zoom, pan, double-tap, single-tap chrome toggle, two-layer swipe, swipe-down dismiss)
     (() => {
@@ -657,12 +698,13 @@ const PPPhoneViewer = (() => {
 
       stage.addEventListener('touchstart', e => {
         if (e.target.closest('button')) return;
+        stageRect = stage.getBoundingClientRect();
         viewerImg.style.willChange = 'transform';
         viewerImg.classList.add('gesturing');
         if (e.touches.length === 2) {
           clearTimeout(tapChromeTimer);
           const [a, b] = e.touches;
-          const r = stage.getBoundingClientRect();
+          const r = stageRect;
           const mx = (a.clientX + b.clientX) / 2 - r.left - r.width / 2;
           const my = (a.clientY + b.clientY) / 2 - r.top - r.height / 2;
           start = {
@@ -677,7 +719,7 @@ const PPPhoneViewer = (() => {
             axis: 'h',
           };
         } else if (e.touches.length === 1) {
-          stageW = stage.clientWidth || 1;
+          stageW = stageRect.width || 1;
           samples = [{ x: e.touches[0].clientX, y: e.touches[0].clientY, t: performance.now() }];
           start = {
             x: e.touches[0].clientX,
@@ -711,7 +753,7 @@ const PPPhoneViewer = (() => {
         }
         if (start.pinch && e.touches.length === 2) {
           const [a, b] = e.touches;
-          const r = stage.getBoundingClientRect();
+          const r = getStageRect();
           const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1;
           const nextScale = Math.min(6, Math.max(1, start.scale * (d / start.dist)));
           const mx = (a.clientX + b.clientX) / 2 - r.left - r.width / 2;

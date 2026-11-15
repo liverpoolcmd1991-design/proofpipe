@@ -194,6 +194,26 @@ export function createStore(ctx) {
     bytes.setFiles(stmts.sumFileBytes.get().b);
   }
 
+  // Bounded worker queue (concurrency 3) for background thumbnail derivation in
+  // storeCapturedParts so upload bursts don't flood sharp/libuv or spike RSS.
+  const THUMB_CONCURRENCY = 3;
+  let activeThumbWorkers = 0;
+  const thumbQueue = [];
+  function enqueueThumbWork(fn) {
+    return new Promise((resolve, reject) => {
+      const run = () => {
+        activeThumbWorkers++;
+        Promise.resolve().then(fn).then(resolve, reject).finally(() => {
+          activeThumbWorkers--;
+          const next = thumbQueue.shift();
+          if (next) next();
+        });
+      };
+      if (activeThumbWorkers < THUMB_CONCURRENCY) run();
+      else thumbQueue.push(run);
+    });
+  }
+
   // ---------- captures ----------
   // Fast ack: the phone gets its response as soon as the ORIGINAL + DB row land;
   // the grid thumbnail derives in the background and clients are pushed the SSE
@@ -294,9 +314,11 @@ export function createStore(ctx) {
       //   hits; firing on thumb-ready makes the tile appear fully painted. (This
       //   event was removed once as "redundant" — it is not: see PITFALLS.md.)
       if (wantsAuto) notify('capture-ready', capEvent());
-      // background thumbnail: only exists once it's safely on disk, then notify.
-      // sharp reads from the stored file — the original never sits in JS heap.
-      makeThumb(finalPath, meta).then(async thumb => {
+      // background thumbnail: queued with bounded concurrency so upload bursts
+      // stay smooth; sharp reads from the stored file — the original never sits in JS heap.
+      enqueueThumbWork(async () => {
+        if (!stmts.getCapture.get(id)) return; // deleted mid-flight — drop it
+        const thumb = await makeThumb(finalPath, meta);
         if (!stmts.getCapture.get(id)) return; // deleted mid-flight — drop it
         const thumbPath = path.join(CAPTURES, `t-${name}`);
         const tmpB = path.join(CAPTURES, `t-tmp-t-${name}`);
@@ -431,12 +453,18 @@ export function createStore(ctx) {
 
     beginFileRead(oldPath);
     try {
-      // Auto-orient EXIF first if needed so client-visible upright orientation rotates accurately.
-      let srcInput = oldPath;
+      // Auto-orient EXIF in a single streaming libvips pass when supported so
+      // upright pixels rotate cleanly without an intermediate re-encoded buffer.
+      let pipe = sharp(oldPath, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' });
       if (meta.orientation && meta.orientation !== 1) {
-        srcInput = await sharp(oldPath, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' }).rotate().toBuffer();
+        if (typeof pipe.autoOrient === 'function') {
+          pipe = pipe.autoOrient();
+        } else {
+          const buf = await sharp(oldPath, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' }).rotate().toBuffer();
+          pipe = sharp(buf, { limitInputPixels: MAX_PIXELS });
+        }
       }
-      const pipe = sharp(srcInput, { limitInputPixels: MAX_PIXELS, animated: fmt === 'gif' && typeof srcInput === 'string' }).rotate(normDeg);
+      pipe = pipe.rotate(normDeg);
       if (outExt === '.png') await pipe.png({ compressionLevel: 6 }).toFile(tmpNew);
       else if (outExt === '.webp') await pipe.webp({ quality: 92 }).toFile(tmpNew);
       else if (outExt === '.avif') await pipe.avif({ quality: 75 }).toFile(tmpNew);
@@ -455,9 +483,11 @@ export function createStore(ctx) {
       const newBytes = origStat.size + thumbBuf.length;
 
       let textChanged = 0;
+      let oldBytes = row.bytes || 0;
       const updated = db.transaction(() => {
         const cur = stmts.getCapture.get(id);
         if (!cur) return null;
+        oldBytes = cur.bytes || 0;
         stmts.updateCaptureFileAndBytes.run(newFile, newBytes, id);
         textChanged = stmts.updateTextBodyByMedia.run(`/media/${oldFile}`, `/media/${newFile}`, `/media/${oldFile}`).changes;
         return stmts.getCapture.get(id);
@@ -471,7 +501,7 @@ export function createStore(ctx) {
         throw err;
       }
 
-      bytes.set(stmts.sumBytes.get().b);
+      bytes.add(newBytes - oldBytes);
       capturesRev++;
 
       await awaitFileIdle(oldPath);

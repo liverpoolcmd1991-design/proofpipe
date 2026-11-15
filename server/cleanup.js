@@ -154,10 +154,12 @@ export function registerCleanup(app, ctx) {
     if (!settings.retentionDays || retentionRunning) return 0;
     retentionRunning = true;
     try {
-      // created_at is SQLite datetime('now') UTC text — the comparison is exact
       const cutoff = `-${settings.retentionDays} days`;
       const old = stmts.listExpiredCaptures.all(cutoff);
-      for (const cap of old) await removeCaptureRow(cap, { silent: true });
+      const CHUNK = 8;
+      for (let i = 0; i < old.length; i += CHUNK) {
+        await Promise.all(old.slice(i, i + CHUNK).map(cap => removeCaptureRow(cap, { silent: true })));
+      }
       if (old.length) {
         notify('deleted'); // payload-less: clients refresh once (see CONVENTIONS)
         logEvent('cleanup-local', { dropped: old.length, kind: 'retention', days: settings.retentionDays });

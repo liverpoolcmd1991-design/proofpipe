@@ -130,13 +130,14 @@ export function registerCaptures(app, ctx) {
         : stmts.listAllCaptureRowsForDelete.all();
       if (hasIds) {
         for (const cap of r) stmts.deleteCapture.run(String(cap.id));
+        if (r.length && stmts.countMediaTexts.get().c > 0) {
+          for (const cap of r) {
+            textClean += stmts.deleteTextsForCapture.run(`/media/${cap.file}`).changes;
+          }
+        }
       } else {
         stmts.deleteAllCaptures.run();
-      }
-      for (const cap of r) {
-        // media-link text rows ("sent to phone" chips) reference these files —
-        // purge them inside the same atomic transaction
-        textClean += stmts.deleteTextsForCapture.run(`/media/${cap.file}`).changes;
+        textClean += stmts.deleteAllMediaTexts.run().changes;
       }
       return r;
     })();

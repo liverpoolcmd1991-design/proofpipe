@@ -53,6 +53,7 @@ const toPng = (() => {
     c.getContext('2d').drawImage(bmp, 0, 0, w, h);
     bmp.close();
     const png = await c.convertToBlob({ type: 'image/png' });
+    c.width = 0; c.height = 0;
     port.postMessage({ png });
   } catch (err) {
     port.postMessage({ error: String((err && err.message) || err) });

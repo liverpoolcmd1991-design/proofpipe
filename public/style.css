@@ -2458,32 +2458,84 @@ input[type="range"]::-moz-range-thumb {
   pointer-events: none;
   opacity: 0;
   background: radial-gradient(
-    180px circle at var(--lgx, 50%) var(--lgy, 50%),
+    115px circle at var(--lgx, 50%) var(--lgy, 50%),
     rgba(255, 255, 255, 0.17) 0%,
     rgba(100, 210, 255, 0.08) 40%,
     transparent 74%
   );
-  transition: opacity 0.2s ease;
+  transition: opacity 0.14s ease;
 }
 
 .workbench-card::before,
 .rail-card::before {
   background: radial-gradient(
-    360px circle at var(--lgx, 50%) var(--lgy, 50%),
-    rgba(130, 216, 255, 0.075) 0%,
-    rgba(10, 132, 255, 0.032) 42%,
+    210px circle at var(--lgx, 50%) var(--lgy, 50%),
+    rgba(130, 216, 255, 0.1) 0%,
+    rgba(10, 132, 255, 0.045) 42%,
     transparent 72%
   );
+  opacity: var(--pw-glow, 0);
   z-index: 2;
+}
+
+.side::after,
+.workbench-card::after,
+.rail-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 1.25px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 3;
+  opacity: var(--pw-glow, 0);
+  background:
+    radial-gradient(
+      195px circle at var(--lgx, 50%) var(--lgy, 50%),
+      rgba(180, 238, 255, 0.72) 0%,
+      rgba(10, 132, 255, 0.36) 36%,
+      rgba(140, 110, 255, 0.14) 62%,
+      transparent 78%
+    ),
+    linear-gradient(
+      var(--pw-ang, 135deg),
+      rgba(255, 255, 255, 0.34) 0%,
+      rgba(100, 210, 255, 0.12) 38%,
+      transparent 66%
+    );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+
+.side,
+.workbench-card,
+.rail-card,
+.modal-box {
+  transform: perspective(1200px)
+    translate3d(var(--pw-tx, 0px), var(--pw-ty, 0px), 0)
+    rotateX(var(--pw-rx, 0deg))
+    rotateY(var(--pw-ry, 0deg))
+    skew(var(--pw-skx, 0deg), var(--pw-sky, 0deg))
+    scale(var(--pw-s, 1));
+  will-change: transform;
+}
+
+.modal-box {
+  position: relative;
+  box-shadow:
+    calc(var(--pw-nx, 0) * -10px) calc(var(--pw-ny, 0) * -10px) 64px rgba(0, 0, 0, 0.68),
+    0 0 0 calc(var(--pw-glow, 0) * 1px) rgba(145, 224, 255, 0.34),
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.3),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.14);
 }
 
 .workbench-card:focus-within {
   z-index: 6;
 }
 
-[data-lg="on"]::after,
-.workbench-card[data-lg="on"]::before,
-.rail-card[data-lg="on"]::before {
+[data-lg="on"]::after {
   opacity: 1;
 }
 
@@ -2534,7 +2586,7 @@ input[type="range"]::-moz-range-thumb {
   );
   transform: scale(0);
   opacity: 0.85;
-  animation: ppWaterRipple 0.52s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
+  animation: ppWaterRipple 0.34s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
 }
 
 @keyframes ppWaterRipple {
@@ -2627,8 +2679,18 @@ input[type="range"]::-moz-range-thumb {
 
 @media (prefers-reduced-motion: reduce) {
   .pp-bg-warp,
-  .pp-ripple {
+  .pp-ripple,
+  .side::after,
+  .workbench-card::after,
+  .rail-card::after {
     display: none !important;
+  }
+  .side,
+  .workbench-card,
+  .rail-card,
+  .modal-box {
+    transform: none !important;
+    will-change: auto;
   }
   *, *::before, *::after {
     animation: none !important;

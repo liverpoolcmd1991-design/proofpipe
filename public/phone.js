@@ -2428,17 +2428,117 @@ function initPhoneLiquidEffects() {
   let w = 0, h = 0, dpr = 1;
   let tx = -999, ty = -999, cx = -999, cy = -999, str = 0, tStr = 0, raf = 0;
   const ripples = [];
+  const finePtr = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
+
+  const panelEls = [...document.querySelectorAll('.status-strip, .alt-btn, #outbox-info, #more-menu')];
+  const panelStates = panelEls.map(el => ({
+    el, rect: null, rx: 0, ry: 0, skx: 0, sky: 0, tx: 0, ty: 0, s: 1, glow: 0, press: 0, dirtyWrite: false,
+  }));
+  let panelRectsDirty = true;
+  const invalidatePanelRects = () => { panelRectsDirty = true; };
+  if (typeof MutationObserver === 'function') {
+    const mMenu = $('#more-menu');
+    const outboxEl = $('#outbox-info');
+    const obs = new MutationObserver(invalidatePanelRects);
+    if (mMenu) obs.observe(mMenu, { attributes: true, attributeFilter: ['class'] });
+    if (outboxEl) obs.observe(outboxEl, { attributes: true, attributeFilter: ['class'] });
+  }
+  const measurePanels = () => {
+    panelRectsDirty = false;
+    for (let i = 0; i < panelStates.length; i++) {
+      const p = panelStates[i];
+      if (p.el.classList.contains('hidden') || (p.el.id === 'more-menu' && !p.el.classList.contains('open'))) {
+        p.rect = null; continue;
+      }
+      const r = p.el.getBoundingClientRect();
+      p.rect = r.width > 0 && r.height > 0
+        ? { left: r.left - p.tx, top: r.top - p.ty, width: r.width, height: r.height }
+        : null;
+    }
+  };
+  const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+  const updatePanels = () => {
+    if (panelRectsDirty) measurePanels();
+    let moving = false;
+    for (let i = 0; i < panelStates.length; i++) {
+      const p = panelStates[i];
+      const r = p.rect;
+      if (!r) {
+        if (p.dirtyWrite) {
+          p.rx = p.ry = p.skx = p.sky = p.tx = p.ty = p.glow = p.press = 0; p.s = 1; p.dirtyWrite = false;
+          const st = p.el.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+        }
+        continue;
+      }
+      const px = r.left + r.width * 0.5, py = r.top + r.height * 0.5;
+      const dEx = Math.max(0, Math.abs(cx - px) - r.width * 0.5);
+      const dEy = Math.max(0, Math.abs(cy - py) - r.height * 0.5);
+      const dE2 = dEx * dEx + dEy * dEy;
+      const prox = str > 0.01 ? Math.exp(-dE2 / (72 * 72)) * str : 0;
+      const nx = prox > 0.005 ? clamp((cx - px) / (r.width * 0.5 + 34), -1.2, 1.2) : 0;
+      const ny = prox > 0.005 ? clamp((cy - py) / (r.height * 0.5 + 34), -1.2, 1.2) : 0;
+
+      const tRx = -ny * 2.4 * prox, tRy = nx * 2.4 * prox;
+      const tSkx = nx * ny * 0.65 * prox, tSky = -nx * ny * 0.42 * prox;
+      const tTx = nx * 2.4 * prox, tTy = ny * 2.4 * prox;
+      const tS = 1 + 0.005 * prox - p.press * 0.012;
+      const tGlow = dE2 === 0 ? prox : prox * 0.65;
+
+      p.rx += (tRx - p.rx) * 0.44; p.ry += (tRy - p.ry) * 0.44;
+      p.skx += (tSkx - p.skx) * 0.44; p.sky += (tSky - p.sky) * 0.44;
+      p.tx += (tTx - p.tx) * 0.44; p.ty += (tTy - p.ty) * 0.44;
+      p.s += (tS - p.s) * 0.48; p.glow += (tGlow - p.glow) * 0.42;
+      p.press *= 0.72; if (p.press < 0.004) p.press = 0;
+
+      const settled = Math.abs(p.rx - tRx) < 0.02 && Math.abs(p.ry - tRy) < 0.02 &&
+        Math.abs(p.tx - tTx) < 0.03 && Math.abs(p.ty - tTy) < 0.03 &&
+        Math.abs(p.glow - tGlow) < 0.008 && p.press === 0 && Math.abs(p.s - tS) < 0.0005;
+      const atRest = settled && prox === 0 && Math.abs(p.rx) < 0.02 && Math.abs(p.ry) < 0.02 &&
+        Math.abs(p.tx) < 0.03 && Math.abs(p.ty) < 0.03 && p.glow < 0.008 && Math.abs(p.s - 1) < 0.0005;
+      if (!settled) moving = true;
+      if (atRest) {
+        if (p.dirtyWrite) {
+          p.rx = p.ry = p.skx = p.sky = p.tx = p.ty = p.glow = 0; p.s = 1; p.dirtyWrite = false;
+          const st = p.el.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+        }
+        continue;
+      }
+      p.dirtyWrite = true;
+      const st = p.el.style;
+      st.setProperty('--pw-rx', `${p.rx.toFixed(3)}deg`);
+      st.setProperty('--pw-ry', `${p.ry.toFixed(3)}deg`);
+      st.setProperty('--pw-skx', `${p.skx.toFixed(3)}deg`);
+      st.setProperty('--pw-sky', `${p.sky.toFixed(3)}deg`);
+      st.setProperty('--pw-tx', `${p.tx.toFixed(2)}px`);
+      st.setProperty('--pw-ty', `${p.ty.toFixed(2)}px`);
+      st.setProperty('--pw-s', p.s.toFixed(4));
+      st.setProperty('--pw-glow', p.glow.toFixed(3));
+      if (prox > 0.01) {
+        st.setProperty('--lgx', `${(cx - r.left).toFixed(1)}px`);
+        st.setProperty('--lgy', `${(cy - r.top).toFixed(1)}px`);
+      }
+    }
+    return moving;
+  };
 
   const drawFrame = now => {
     ctx.clearRect(0, 0, w, h);
     for (let i = ripples.length - 1; i >= 0; i--) {
-      if (now - ripples[i].t0 > 900) ripples.splice(i, 1);
+      if (now - ripples[i].t0 > 520) ripples.splice(i, 1);
     }
     if (str > 0.01) {
-      const rx = 240;
+      const rx = 140;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
-      g.addColorStop(0, `rgba(100, 210, 255, ${(0.1 * str).toFixed(4)})`);
-      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.045 * str).toFixed(4)})`);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.12 * str).toFixed(4)})`);
+      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.05 * str).toFixed(4)})`);
       g.addColorStop(1, 'rgba(10, 132, 255, 0)');
       ctx.fillStyle = g;
       ctx.fillRect(Math.max(0, cx - rx), Math.max(0, cy - rx), rx * 2, rx * 2);
@@ -2446,10 +2546,10 @@ function initPhoneLiquidEffects() {
     const STEP = 42;
     const cols = Math.ceil(w / STEP) + 2;
     const rows = Math.ceil(h / STEP) + 2;
-    const r2 = 170 * 170;
+    const r2 = 100 * 100;
     const activeRipples = ripples.map(rp => {
-      const age = (now - rp.t0) / 900;
-      return { x: rp.x, y: rp.y, radius: age * 300, decay: (1 - age) * (1 - age) };
+      const age = (now - rp.t0) / 520;
+      return { x: rp.x, y: rp.y, radius: age * 180, decay: (1 - age) * (1 - age) };
     });
     const pts = new Array(rows * cols);
     for (let r = 0; r < rows; r++) {
@@ -2461,17 +2561,17 @@ function initPhoneLiquidEffects() {
           const dx = gx - cx, dy = gy - cy, d2 = dx * dx + dy * dy;
           if (d2 < r2 && d2 > 0.01) {
             const dist = Math.sqrt(d2);
-            const f = Math.exp(-d2 / (90 * 90));
-            const p = 20 * str * f * (1 - Math.exp(-dist / 28));
+            const f = Math.exp(-d2 / (52 * 52));
+            const p = 20 * str * f * (1 - Math.exp(-dist / 16));
             ox += (dx / dist) * p; oy += (dy / dist) * p; glow = f * str;
           }
         }
         for (let i = 0; i < activeRipples.length; i++) {
           const rp = activeRipples[i], dx = gx - rp.x, dy = gy - rp.y, dist = Math.hypot(dx, dy);
           const band = dist - rp.radius;
-          if (Math.abs(band) < 85 && dist > 1) {
-            const wv = Math.cos((band / 85) * Math.PI * 0.5);
-            const amp = 14 * rp.decay * wv * Math.sin(band * 0.09);
+          if (Math.abs(band) < 50 && dist > 1) {
+            const wv = Math.cos((band / 50) * Math.PI * 0.5);
+            const amp = 14 * rp.decay * wv * Math.sin(band * 0.13);
             ox += (dx / dist) * amp; oy += (dy / dist) * amp; glow = Math.max(glow, rp.decay * wv * 0.8);
           }
         }
@@ -2508,9 +2608,10 @@ function initPhoneLiquidEffects() {
   const tick = now => {
     raf = 0;
     const dx = tx - cx, dy = ty - cy, ds = tStr - str;
-    cx += dx * 0.24; cy += dy * 0.24; str += ds * 0.16;
+    cx += dx * 0.5; cy += dy * 0.5; str += ds * 0.36;
     drawFrame(now);
-    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length) {
+    const moving = updatePanels();
+    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length || moving) {
       raf = requestAnimationFrame(tick);
     }
   };
@@ -2520,11 +2621,13 @@ function initPhoneLiquidEffects() {
     dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    invalidatePanelRects();
     drawFrame(performance.now());
   };
+  window.addEventListener('scroll', invalidatePanelRects, { passive: true, capture: true });
   window.addEventListener('resize', resize, { passive: true });
   resize();
-  if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
+  if (finePtr) {
     document.addEventListener('pointermove', e => {
       if (e.pointerType !== 'mouse') { tStr = 0; schedule(); return; }
       tx = e.clientX; ty = e.clientY;
@@ -2535,10 +2638,24 @@ function initPhoneLiquidEffects() {
   }
   document.addEventListener('pointerdown', e => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    if (e.pointerType !== 'mouse') {
+      tx = cx = e.clientX; ty = cy = e.clientY; tStr = 0.85; str = 0.85;
+    }
     ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
     if (ripples.length > 4) ripples.shift();
+    const hitPanel = e.target?.closest?.('.status-strip, .alt-btn, #outbox-info, #more-menu');
+    if (hitPanel) {
+      for (let i = 0; i < panelStates.length; i++) {
+        if (panelStates[i].el === hitPanel) panelStates[i].press = 1;
+      }
+    }
     schedule();
   }, { passive: true });
+  const endTouchWarp = e => {
+    if (e.pointerType !== 'mouse') { tStr = 0; schedule(); }
+  };
+  document.addEventListener('pointerup', endTouchWarp, { passive: true });
+  document.addEventListener('pointercancel', endTouchWarp, { passive: true });
 }
 
 initPhoneLiquidEffects();

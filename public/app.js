@@ -2413,7 +2413,7 @@ function initLiquidPointerAndRipples() {
   const finePointer = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
 
   const RIPPLE_SEL = '.btn, .toolbtn, .origin-btn, .pair-url-btn, .cap-thumb-wrap, .file-row, .text-pill-wrap, .glass-select-trigger, .glass-select-option, .text-dialog-row, .drop-zone, .filter-btn';
-  const SURFACE_SEL = '.btn, .toolbtn, .origin-btn, .pair-url-btn, .text-pill-wrap, .file-row, .cap-tile, .glass-select-trigger, .glass-select-option, .text-dialog-row, .release-card, .drop-zone, .filter-btn, .workbench-card, .rail-card';
+  const SURFACE_SEL = '.btn, .toolbtn, .origin-btn, .pair-url-btn, .text-pill-wrap, .file-row, .cap-tile, .glass-select-trigger, .glass-select-option, .text-dialog-row, .release-card, .drop-zone, .filter-btn';
 
   if (!reducedMotion) {
     document.addEventListener('pointerdown', e => {
@@ -2449,15 +2449,59 @@ function initLiquidPointerAndRipples() {
   let rafId = 0;
   const ripples = [];
 
-  // Cached rect map for hovered surface caustic sheen (zero per-move layout thrashing)
+  // Cached rect map for hovered small surface caustic sheen (zero per-move layout thrashing)
   let surfaceRects = new WeakMap();
   let activeSurface = null;
-  let activeCard = null;
   let pendingClientX = 0;
   let pendingClientY = 0;
   let needsSurfaceUpdate = false;
 
-  const invalidateRects = () => { surfaceRects = new WeakMap(); };
+  // Liquid Glass panel warp state (zero layout reads during pointermove)
+  const panelStates = [...document.querySelectorAll('.side, .workbench-card, .rail-card, .modal-box')].map(el => {
+    const isModal = el.classList.contains('modal-box');
+    const isRail = el.classList.contains('rail-card');
+    return {
+      el,
+      rect: null,
+      maxTilt: isRail ? 2.5 : (isModal ? 1.85 : 1.5),
+      maxSkew: isRail ? 0.65 : (isModal ? 0.48 : 0.42),
+      maxShift: isRail ? 2.5 : 3.2,
+      maxScale: isRail ? 0.0055 : 0.0035,
+      rx: 0, ry: 0, skx: 0, sky: 0, tx: 0, ty: 0, s: 1, glow: 0, press: 0, nx: 0, ny: 0,
+      dirtyWrite: false,
+    };
+  });
+  let panelRectsDirty = true;
+
+  const invalidateRects = () => {
+    surfaceRects = new WeakMap();
+    panelRectsDirty = true;
+  };
+
+  // Re-measure modal/panel rects whenever modal visibility flips
+  if (typeof MutationObserver === 'function') {
+    const obs = new MutationObserver(() => { panelRectsDirty = true; });
+    for (const bd of document.querySelectorAll('.modal-backdrop')) {
+      obs.observe(bd, { attributes: true, attributeFilter: ['class'] });
+    }
+  }
+
+  const measurePanels = () => {
+    panelRectsDirty = false;
+    for (let i = 0; i < panelStates.length; i++) {
+      const p = panelStates[i];
+      const hidden = p.el.closest('.hidden') !== null;
+      if (hidden) {
+        p.rect = null;
+        continue;
+      }
+      const r = p.el.getBoundingClientRect();
+      p.rect = r.width > 0 && r.height > 0
+        ? { left: r.left - p.tx, top: r.top - p.ty, width: r.width, height: r.height }
+        : null;
+    }
+  };
+
   const applyLocalCoords = (el, x, y) => {
     if (!el) return;
     let r = surfaceRects.get(el);
@@ -2468,13 +2512,10 @@ function initLiquidPointerAndRipples() {
     el.style.setProperty('--lgx', `${(x - r.left).toFixed(1)}px`);
     el.style.setProperty('--lgy', `${(y - r.top).toFixed(1)}px`);
   };
-  const setActiveSurface = (nextEl, nextCard) => {
+  const setActiveSurface = nextEl => {
     if (activeSurface && activeSurface !== nextEl) delete activeSurface.dataset.lg;
-    if (activeCard && activeCard !== nextCard) delete activeCard.dataset.lg;
     activeSurface = nextEl;
-    activeCard = nextCard;
     if (activeSurface) activeSurface.dataset.lg = 'on';
-    if (activeCard) activeCard.dataset.lg = 'on';
   };
 
   const resizeCanvas = () => {
@@ -2493,15 +2534,15 @@ function initLiquidPointerAndRipples() {
 
     // Prune expired ripples
     for (let i = ripples.length - 1; i >= 0; i--) {
-      if (now - ripples[i].t0 > 950) ripples.splice(i, 1);
+      if (now - ripples[i].t0 > 560) ripples.splice(i, 1);
     }
 
     // 1) Warped ambient water-light caustics that bend toward the cursor
     if (pointerStrength > 0.01) {
-      const rx = 310;
+      const rx = 180;
       const g = ctx.createRadialGradient(curX, curY, 0, curX, curY, rx);
-      g.addColorStop(0, `rgba(100, 210, 255, ${(0.12 * pointerStrength).toFixed(4)})`);
-      g.addColorStop(0.45, `rgba(10, 132, 255, ${(0.065 * pointerStrength).toFixed(4)})`);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.14 * pointerStrength).toFixed(4)})`);
+      g.addColorStop(0.45, `rgba(10, 132, 255, ${(0.07 * pointerStrength).toFixed(4)})`);
       g.addColorStop(0.75, `rgba(48, 209, 88, ${(0.025 * pointerStrength).toFixed(4)})`);
       g.addColorStop(1, 'rgba(10, 132, 255, 0)');
       ctx.fillStyle = g;
@@ -2512,10 +2553,10 @@ function initLiquidPointerAndRipples() {
     const STEP = 44;
     const cols = Math.ceil(w / STEP) + 2;
     const rows = Math.ceil(h / STEP) + 2;
-    const warpR2 = 210 * 210;
+    const warpR2 = 125 * 125;
     const activeRipples = ripples.map(rp => {
-      const age = (now - rp.t0) / 950;
-      return { x: rp.x, y: rp.y, radius: age * 360, decay: (1 - age) * (1 - age) };
+      const age = (now - rp.t0) / 560;
+      return { x: rp.x, y: rp.y, radius: age * 210, decay: (1 - age) * (1 - age) };
     });
 
     const displace = (gx, gy) => {
@@ -2526,8 +2567,8 @@ function initLiquidPointerAndRipples() {
         const d2 = dx * dx + dy * dy;
         if (d2 < warpR2 && d2 > 0.01) {
           const dist = Math.sqrt(d2);
-          const falloff = Math.exp(-d2 / (105 * 105));
-          const push = 26 * pointerStrength * falloff * (1 - Math.exp(-dist / 32));
+          const falloff = Math.exp(-d2 / (62 * 62));
+          const push = 26 * pointerStrength * falloff * (1 - Math.exp(-dist / 18));
           ox += (dx / dist) * push;
           oy += (dy / dist) * push;
           glow = falloff * pointerStrength;
@@ -2539,9 +2580,9 @@ function initLiquidPointerAndRipples() {
         const dy = gy - rp.y;
         const dist = Math.hypot(dx, dy);
         const band = dist - rp.radius;
-        if (Math.abs(band) < 95 && dist > 1) {
-          const wave = Math.cos((band / 95) * Math.PI * 0.5);
-          const amp = 16 * rp.decay * wave * Math.sin(band * 0.08);
+        if (Math.abs(band) < 56 && dist > 1) {
+          const wave = Math.cos((band / 56) * Math.PI * 0.5);
+          const amp = 15 * rp.decay * wave * Math.sin(band * 0.12);
           ox += (dx / dist) * amp;
           oy += (dy / dist) * amp;
           glow = Math.max(glow, rp.decay * wave * 0.85);
@@ -2558,7 +2599,6 @@ function initLiquidPointerAndRipples() {
       }
     }
 
-    // Draw subtle baseline mesh + locally brightened warp lines near pointer/ripples
     ctx.lineWidth = 1;
     ctx.strokeStyle = 'rgba(130, 195, 255, 0.055)';
     ctx.beginPath();
@@ -2578,7 +2618,6 @@ function initLiquidPointerAndRipples() {
     }
     ctx.stroke();
 
-    // Highlighted warped filaments only in active displacement zone
     for (let r = 0; r < rows - 1; r++) {
       for (let c = 0; c < cols - 1; c++) {
         const p0 = pts[r * cols + c];
@@ -2597,24 +2636,134 @@ function initLiquidPointerAndRipples() {
     }
   };
 
+  const clamp = (v, min, max) => (v < min ? min : (v > max ? max : v));
+  const dropHint = $('#drop-hint');
+
+  const updatePanels = () => {
+    if (panelRectsDirty) measurePanels();
+    const dragging = dropHint ? !dropHint.classList.contains('hidden') : false;
+    let panelsMoving = false;
+    for (let i = 0; i < panelStates.length; i++) {
+      const p = panelStates[i];
+      const r = p.rect;
+      if (!r) {
+        if (p.dirtyWrite) {
+          p.rx = p.ry = p.skx = p.sky = p.tx = p.ty = p.glow = p.press = p.nx = p.ny = 0;
+          p.s = 1;
+          p.dirtyWrite = false;
+          const st = p.el.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+          st.removeProperty('--pw-nx'); st.removeProperty('--pw-ny');
+        }
+        continue;
+      }
+
+      const menuOpen = p.el.querySelector('.glass-select.open') !== null;
+      const cx = r.left + r.width * 0.5;
+      const cy = r.top + r.height * 0.5;
+      const dEdgeX = Math.max(0, Math.abs(curX - cx) - r.width * 0.5);
+      const dEdgeY = Math.max(0, Math.abs(curY - cy) - r.height * 0.5);
+      const dEdge2 = dEdgeX * dEdgeX + dEdgeY * dEdgeY;
+      const prox = (!dragging && !menuOpen && pointerStrength > 0.01)
+        ? Math.exp(-dEdge2 / (85 * 85)) * pointerStrength
+        : 0;
+
+      const nx = prox > 0.005 ? clamp((curX - cx) / (r.width * 0.5 + 48), -1.25, 1.25) : 0;
+      const ny = prox > 0.005 ? clamp((curY - cy) / (r.height * 0.5 + 48), -1.25, 1.25) : 0;
+
+      const tRx = -ny * p.maxTilt * prox;
+      const tRy = nx * p.maxTilt * prox;
+      const tSkx = nx * ny * p.maxSkew * prox;
+      const tSky = -nx * ny * p.maxSkew * 0.65 * prox;
+      const tTx = nx * p.maxShift * prox;
+      const tTy = ny * p.maxShift * prox;
+      const tS = 1 + p.maxScale * prox - p.press * 0.0055;
+      const tGlow = dEdge2 === 0 ? prox : prox * 0.72;
+
+      p.rx += (tRx - p.rx) * 0.42;
+      p.ry += (tRy - p.ry) * 0.42;
+      p.skx += (tSkx - p.skx) * 0.42;
+      p.sky += (tSky - p.sky) * 0.42;
+      p.tx += (tTx - p.tx) * 0.42;
+      p.ty += (tTy - p.ty) * 0.42;
+      p.s += (tS - p.s) * 0.46;
+      p.glow += (tGlow - p.glow) * 0.4;
+      p.nx += (nx - p.nx) * 0.42;
+      p.ny += (ny - p.ny) * 0.42;
+      p.press *= 0.72;
+      if (p.press < 0.004) p.press = 0;
+
+      const settled = Math.abs(p.rx - tRx) < 0.015 && Math.abs(p.ry - tRy) < 0.015 &&
+        Math.abs(p.tx - tTx) < 0.03 && Math.abs(p.ty - tTy) < 0.03 &&
+        Math.abs(p.glow - tGlow) < 0.008 && p.press === 0 &&
+        Math.abs(p.s - tS) < 0.0004;
+
+      const atRest = settled && prox === 0 && Math.abs(p.rx) < 0.015 && Math.abs(p.ry) < 0.015 &&
+        Math.abs(p.tx) < 0.03 && Math.abs(p.ty) < 0.03 && p.glow < 0.008 && Math.abs(p.s - 1) < 0.0004;
+
+      if (!settled) panelsMoving = true;
+
+      if (atRest) {
+        if (p.dirtyWrite) {
+          p.rx = p.ry = p.skx = p.sky = p.tx = p.ty = p.glow = p.nx = p.ny = 0;
+          p.s = 1;
+          p.dirtyWrite = false;
+          const st = p.el.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+          st.removeProperty('--pw-nx'); st.removeProperty('--pw-ny');
+          st.removeProperty('--pw-ang');
+        }
+        continue;
+      }
+
+      p.dirtyWrite = true;
+      const st = p.el.style;
+      st.setProperty('--pw-rx', `${p.rx.toFixed(3)}deg`);
+      st.setProperty('--pw-ry', `${p.ry.toFixed(3)}deg`);
+      st.setProperty('--pw-skx', `${p.skx.toFixed(3)}deg`);
+      st.setProperty('--pw-sky', `${p.sky.toFixed(3)}deg`);
+      st.setProperty('--pw-tx', `${p.tx.toFixed(2)}px`);
+      st.setProperty('--pw-ty', `${p.ty.toFixed(2)}px`);
+      st.setProperty('--pw-s', p.s.toFixed(4));
+      st.setProperty('--pw-glow', p.glow.toFixed(3));
+      st.setProperty('--pw-nx', p.nx.toFixed(3));
+      st.setProperty('--pw-ny', p.ny.toFixed(3));
+      if (prox > 0.01) {
+        const lx = curX - r.left;
+        const ly = curY - r.top;
+        const ang = (Math.atan2(curY - cy, curX - cx) * 180 / Math.PI) + 90;
+        st.setProperty('--lgx', `${lx.toFixed(1)}px`);
+        st.setProperty('--lgy', `${ly.toFixed(1)}px`);
+        st.setProperty('--pw-ang', `${ang.toFixed(1)}deg`);
+      }
+    }
+    return panelsMoving;
+  };
+
   const tick = now => {
     rafId = 0;
     const dx = targetX - curX;
     const dy = targetY - curY;
     const ds = targetStrength - pointerStrength;
-    curX += dx * 0.24;
-    curY += dy * 0.24;
-    pointerStrength += ds * 0.16;
+    curX += dx * 0.5;
+    curY += dy * 0.5;
+    pointerStrength += ds * 0.36;
 
     if (needsSurfaceUpdate) {
       needsSurfaceUpdate = false;
       if (activeSurface) applyLocalCoords(activeSurface, pendingClientX, pendingClientY);
-      if (activeCard && activeCard !== activeSurface) applyLocalCoords(activeCard, pendingClientX, pendingClientY);
     }
 
     drawFrame(now);
+    const panelsMoving = finePointer ? updatePanels() : false;
 
-    const active = Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length > 0;
+    const active = Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length > 0 || panelsMoving;
     if (active) rafId = requestAnimationFrame(tick);
   };
 
@@ -2647,23 +2796,20 @@ function initLiquidPointerAndRipples() {
       const t = e.target;
       if (t && t.closest) {
         const nextSurf = t.closest(SURFACE_SEL);
-        const nextCard = t.closest('.workbench-card, .rail-card');
-        if (nextSurf !== activeSurface || nextCard !== activeCard) {
-          setActiveSurface(nextSurf, nextCard);
-        }
+        if (nextSurf !== activeSurface) setActiveSurface(nextSurf);
       }
       scheduleTick();
     }, { passive: true });
 
     document.addEventListener('pointerleave', () => {
       targetStrength = 0;
-      setActiveSurface(null, null);
+      setActiveSurface(null);
       scheduleTick();
     });
 
     window.addEventListener('blur', () => {
       targetStrength = 0;
-      setActiveSurface(null, null);
+      setActiveSurface(null);
       scheduleTick();
     });
   }
@@ -2672,6 +2818,17 @@ function initLiquidPointerAndRipples() {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
     if (ripples.length > 5) ripples.shift();
+    if (finePointer) {
+      const hitPanel = e.target?.closest?.('.side, .workbench-card, .rail-card, .modal-box');
+      if (hitPanel) {
+        for (let i = 0; i < panelStates.length; i++) {
+          const p = panelStates[i];
+          if (p.el === hitPanel || hitPanel.contains(p.el) || p.el.contains(hitPanel)) {
+            p.press = 1;
+          }
+        }
+      }
+    }
     scheduleTick();
   }, { passive: true });
 }

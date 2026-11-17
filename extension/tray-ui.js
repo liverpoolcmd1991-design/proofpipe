@@ -32,7 +32,8 @@ const PPTrayUI = (() => {
         font-size: 16px; font-weight: 700; cursor: pointer;
         box-shadow: 0 8px 24px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.28), 0 0 0 0 rgba(10,132,255,0);
         display: grid; place-items: center; user-select: none;
-        transition: border-color .18s, box-shadow .18s, transform .12s;
+        transform: perspective(360px) translate3d(var(--fw-tx, 0px), var(--fw-ty, 0px), 0) rotateX(var(--fw-rx, 0deg)) rotateY(var(--fw-ry, 0deg));
+        transition: border-color .18s, box-shadow .18s, transform .14s ease-out;
       }
       .fab:hover {
         border-color: rgba(100, 210, 255, 0.48);
@@ -52,13 +53,28 @@ const PPTrayUI = (() => {
         backdrop-filter: saturate(210%) blur(32px);
         color: #f5f7ff; border: 1px solid rgba(255, 255, 255, 0.16);
         border-radius: 18px;
-        box-shadow: 0 20px 54px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.2);
+        box-shadow:
+          calc(var(--pw-nx, 0) * -8px) calc(var(--pw-ny, 0) * -8px) 54px rgba(0,0,0,.62),
+          0 0 0 calc(var(--pw-glow, 0) * 1px) rgba(145, 224, 255, 0.36),
+          inset 0 1px 0 rgba(255,255,255,.2);
         padding: 12px; display: none;
         opacity: 0; transform: scale(.96); transform-origin: bottom right;
         transition: opacity .18s ease, transform .18s cubic-bezier(.22, 1, .36, 1);
       }
       .panel.open { display: block; }
-      .panel.open.visible { opacity: 1; transform: scale(1); }
+      .panel.open.visible {
+        opacity: 1;
+        transform: perspective(760px)
+          translate3d(var(--pw-tx, 0px), var(--pw-ty, 0px), 0)
+          rotateX(var(--pw-rx, 0deg))
+          rotateY(var(--pw-ry, 0deg))
+          skew(var(--pw-skx, 0deg), var(--pw-sky, 0deg))
+          scale(var(--pw-s, 1));
+      }
+      .panel.is-warping {
+        transition: opacity .18s ease;
+        will-change: transform;
+      }
 
       /* --- header --- */
       .head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 8px; }
@@ -206,12 +222,12 @@ const PPTrayUI = (() => {
         z-index: 0;
         opacity: var(--tray-ptr-on, 0);
         background: radial-gradient(
-          210px circle at var(--px, 50%) var(--py, 50%),
+          125px circle at var(--px, 50%) var(--py, 50%),
           rgba(130, 216, 255, 0.14) 0%,
           rgba(10, 132, 255, 0.055) 44%,
           transparent 74%
         );
-        transition: opacity 0.2s ease;
+        transition: opacity 0.14s ease;
       }
       .panel > * { position: relative; z-index: 1; }
       .icon-btn, .txtsend, .txtitem, .recovery-btn { position: relative; overflow: hidden; }
@@ -220,7 +236,7 @@ const PPTrayUI = (() => {
         border: 1px solid rgba(180, 236, 255, 0.65);
         background: radial-gradient(circle, rgba(255,255,255,0.34) 0%, rgba(100,210,255,0.18) 45%, transparent 76%);
         transform: scale(0); opacity: 0.85;
-        animation: ppTrayRipple 0.48s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
+        animation: ppTrayRipple 0.32s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
       }
       @keyframes ppTrayRipple {
         0% { transform: scale(0); opacity: 0.85; }
@@ -248,6 +264,7 @@ const PPTrayUI = (() => {
       @keyframes ppTrayPop { 50% { transform: scale(1.025); } }
       @media (prefers-reduced-motion: reduce) {
         .panel::before, .pp-tray-ripple { display: none !important; }
+        .panel.open.visible, .fab { transform: none !important; will-change: auto; }
         *, *::before, *::after { animation: none !important; transition: none !important; }
       }
   `;

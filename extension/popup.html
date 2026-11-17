@@ -324,8 +324,8 @@
     border-radius: inherit;
     pointer-events: none;
     opacity: 0;
-    background: radial-gradient(120px circle at var(--lgx, 50%) var(--lgy, 50%), rgba(255,255,255,0.16) 0%, rgba(100,210,255,0.08) 45%, transparent 74%);
-    transition: opacity 0.18s ease;
+    background: radial-gradient(80px circle at var(--lgx, 50%) var(--lgy, 50%), rgba(255,255,255,0.16) 0%, rgba(100,210,255,0.08) 45%, transparent 74%);
+    transition: opacity 0.14s ease;
   }
   [data-lg="on"]::before { opacity: 1; }
 
@@ -338,7 +338,7 @@
     background: radial-gradient(circle, rgba(255,255,255,0.34) 0%, rgba(100,210,255,0.18) 45%, transparent 76%);
     transform: scale(0);
     opacity: 0.85;
-    animation: ppExtRipple 0.48s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
+    animation: ppExtRipple 0.32s cubic-bezier(0.18, 0.88, 0.3, 1) forwards;
   }
   @keyframes ppExtRipple {
     0% { transform: scale(0); opacity: 0.85; }
@@ -355,8 +355,43 @@
   .item.copied, .titem.copied { animation: ppExtCopied 0.3s cubic-bezier(0.2, 0.9, 0.25, 1); }
   @keyframes ppExtCopied { 50% { transform: scale(1.025); } }
 
+  .qsend, .tabs, .ext-advanced, .item, .titem {
+    transform: perspective(720px)
+      translate3d(var(--pw-tx, 0px), var(--pw-ty, 0px), 0)
+      rotateX(var(--pw-rx, 0deg))
+      rotateY(var(--pw-ry, 0deg))
+      skew(var(--pw-skx, 0deg), var(--pw-sky, 0deg))
+      scale(var(--pw-s, 1));
+    will-change: transform;
+  }
+
+  .qsend, .ext-advanced {
+    position: relative;
+  }
+  .qsend::after, .ext-advanced::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    padding: 1.2px;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: 3;
+    opacity: var(--pw-glow, 0);
+    background: radial-gradient(
+      120px circle at var(--lgx, 50%) var(--lgy, 50%),
+      rgba(180, 238, 255, 0.72) 0%,
+      rgba(10, 132, 255, 0.34) 40%,
+      transparent 76%
+    );
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask-composite: exclude;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .pp-ext-warp, .pp-ext-ripple { display: none !important; }
+    .pp-ext-warp, .pp-ext-ripple, .qsend::after, .ext-advanced::after { display: none !important; }
+    .qsend, .tabs, .ext-advanced, .item, .titem { transform: none !important; will-change: auto; }
     * { animation: none !important; transition: none !important; }
   }
 </style>

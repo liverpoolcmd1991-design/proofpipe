@@ -1335,35 +1335,134 @@
     load();
   });
 
-  // Shadow-DOM liquid pointer caustic highlight + water click ripples (cached panel rect)
+  // Shadow-DOM liquid pointer warp, caustic highlight & water click ripples (cached panel rect)
   if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
     let panelRect = null;
     let panelRaf = 0;
+    let targetActive = false;
+    let panelDragging = false;
     let px = 0, py = 0;
+    let rx = 0, ry = 0, skx = 0, sky = 0, tx = 0, ty = 0, s = 1, glow = 0, press = 0, nx = 0, ny = 0;
+    let dirtyVars = false;
+
+    const clampW = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
     const invalidatePanelRect = () => { panelRect = null; };
     window.addEventListener('resize', invalidatePanelRect, { passive: true });
+
+    const stepWarp = () => {
+      panelRaf = 0;
+      if (!open || panelDragging) targetActive = false;
+      if (!panelRect && targetActive) panelRect = panel.getBoundingClientRect();
+
+      let tRx = 0, tRy = 0, tSkx = 0, tSky = 0, tTx = 0, tTy = 0, tGlow = 0, tNx = 0, tNy = 0;
+      const tS = 1 + (targetActive ? 0.005 : 0) - press * 0.009;
+      if (targetActive && panelRect && panelRect.width > 0 && panelRect.height > 0) {
+        const cx = panelRect.left + panelRect.width * 0.5;
+        const cy = panelRect.top + panelRect.height * 0.5;
+        tNx = clampW((px - cx) / (panelRect.width * 0.5 + 16), -1.15, 1.15);
+        tNy = clampW((py - cy) / (panelRect.height * 0.5 + 16), -1.15, 1.15);
+        tRx = -tNy * 2.4;
+        tRy = tNx * 2.4;
+        tSkx = tNx * tNy * 0.65;
+        tSky = -tNx * tNy * 0.42;
+        tTx = tNx * 3.0;
+        tTy = tNy * 3.0;
+        tGlow = 1;
+        panel.style.setProperty('--px', `${(px - panelRect.left).toFixed(1)}px`);
+        panel.style.setProperty('--py', `${(py - panelRect.top).toFixed(1)}px`);
+      }
+
+      rx += (tRx - rx) * 0.44;
+      ry += (tRy - ry) * 0.44;
+      skx += (tSkx - skx) * 0.44;
+      sky += (tSky - sky) * 0.44;
+      tx += (tTx - tx) * 0.44;
+      ty += (tTy - ty) * 0.44;
+      s += (tS - s) * 0.48;
+      glow += (tGlow - glow) * 0.42;
+      nx += (tNx - nx) * 0.44;
+      ny += (tNy - ny) * 0.44;
+      press *= 0.72;
+      if (press < 0.004) press = 0;
+
+      const settled = Math.abs(rx - tRx) < 0.02 && Math.abs(ry - tRy) < 0.02 &&
+        Math.abs(tx - tTx) < 0.03 && Math.abs(ty - tTy) < 0.03 &&
+        Math.abs(glow - tGlow) < 0.01 && press === 0 && Math.abs(s - tS) < 0.0005;
+      const atRest = settled && !targetActive && Math.abs(rx) < 0.02 && Math.abs(ry) < 0.02 &&
+        Math.abs(tx) < 0.03 && Math.abs(ty) < 0.03 && glow < 0.01 && Math.abs(s - 1) < 0.0005;
+
+      if (atRest) {
+        if (dirtyVars) {
+          rx = ry = skx = sky = tx = ty = glow = nx = ny = 0; s = 1;
+          dirtyVars = false;
+          panel.classList.remove('is-warping');
+          const st = panel.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+          st.removeProperty('--pw-nx'); st.removeProperty('--pw-ny');
+        }
+        return;
+      }
+
+      dirtyVars = true;
+      panel.classList.add('is-warping');
+      const st = panel.style;
+      st.setProperty('--pw-rx', `${rx.toFixed(3)}deg`);
+      st.setProperty('--pw-ry', `${ry.toFixed(3)}deg`);
+      st.setProperty('--pw-skx', `${skx.toFixed(3)}deg`);
+      st.setProperty('--pw-sky', `${sky.toFixed(3)}deg`);
+      st.setProperty('--pw-tx', `${tx.toFixed(2)}px`);
+      st.setProperty('--pw-ty', `${ty.toFixed(2)}px`);
+      st.setProperty('--pw-s', s.toFixed(4));
+      st.setProperty('--pw-glow', glow.toFixed(3));
+      st.setProperty('--pw-nx', nx.toFixed(3));
+      st.setProperty('--pw-ny', ny.toFixed(3));
+
+      if (!settled) panelRaf = requestAnimationFrame(stepWarp);
+    };
+
+    const scheduleWarp = () => {
+      if (!panelRaf) panelRaf = requestAnimationFrame(stepWarp);
+    };
+
     panel.addEventListener('pointerenter', e => {
+      if (e.pointerType !== 'mouse' || panelDragging) return;
       panelRect = panel.getBoundingClientRect();
       panel.style.setProperty('--tray-ptr-on', '1');
       px = e.clientX; py = e.clientY;
+      targetActive = true;
+      scheduleWarp();
     }, { passive: true });
+
     panel.addEventListener('pointermove', e => {
-      if (e.pointerType !== 'mouse') return;
+      if (e.pointerType !== 'mouse' || panelDragging) return;
       px = e.clientX; py = e.clientY;
-      if (panelRaf) return;
-      panelRaf = requestAnimationFrame(() => {
-        panelRaf = 0;
-        if (!panelRect) panelRect = panel.getBoundingClientRect();
-        panel.style.setProperty('--px', `${(px - panelRect.left).toFixed(1)}px`);
-        panel.style.setProperty('--py', `${(py - panelRect.top).toFixed(1)}px`);
-      });
+      targetActive = true;
+      scheduleWarp();
     }, { passive: true });
+
     panel.addEventListener('pointerleave', () => {
       panelRect = null;
+      targetActive = false;
       panel.style.setProperty('--tray-ptr-on', '0');
+      scheduleWarp();
     });
+
+    panel.addEventListener('dragstart', () => {
+      panelDragging = true;
+      targetActive = false;
+      scheduleWarp();
+    }, { passive: true });
+
+    panel.addEventListener('dragend', () => {
+      panelDragging = false;
+    }, { passive: true });
+
     panel.addEventListener('pointerdown', e => {
       if (e.button !== 0 && e.pointerType === 'mouse') return;
+      if (!panelDragging) { press = 1; scheduleWarp(); }
       const hostBtn = e.target?.closest?.('.icon-btn, .txtsend, .txtitem, .recovery-btn');
       if (!hostBtn || hostBtn.disabled) return;
       const rect = hostBtn.getBoundingClientRect();
@@ -1380,6 +1479,27 @@
       ripple.addEventListener('animationend', cleanup, { once: true });
       setTimeout(cleanup, 540);
     }, { passive: true });
+
+    // Subtle pointer tilt on FAB when hovered and not dragging
+    let fabRect = null;
+    fab.addEventListener('pointerenter', () => { fabRect = fab.getBoundingClientRect(); }, { passive: true });
+    fab.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse' || fabDrag) return;
+      if (!fabRect) fabRect = fab.getBoundingClientRect();
+      const fnx = clampW((e.clientX - (fabRect.left + fabRect.width * 0.5)) / (fabRect.width * 0.5), -1, 1);
+      const fny = clampW((e.clientY - (fabRect.top + fabRect.height * 0.5)) / (fabRect.height * 0.5), -1, 1);
+      fab.style.setProperty('--fw-rx', `${(-fny * 10).toFixed(1)}deg`);
+      fab.style.setProperty('--fw-ry', `${(fnx * 10).toFixed(1)}deg`);
+      fab.style.setProperty('--fw-tx', `${(fnx * 2).toFixed(1)}px`);
+      fab.style.setProperty('--fw-ty', `${(fny * 2).toFixed(1)}px`);
+    }, { passive: true });
+    const resetFabWarp = () => {
+      fabRect = null;
+      fab.style.removeProperty('--fw-rx'); fab.style.removeProperty('--fw-ry');
+      fab.style.removeProperty('--fw-tx'); fab.style.removeProperty('--fw-ty');
+    };
+    fab.addEventListener('pointerleave', resetFabWarp);
+    fab.addEventListener('pointerdown', resetFabWarp, { passive: true });
   }
 
   document.addEventListener('keydown', e => {

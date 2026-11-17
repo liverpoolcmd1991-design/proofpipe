@@ -861,18 +861,122 @@ function initPopupLiquidEffects() {
   const ripples = [];
   let surfaceRects = new WeakMap();
   let activeSurf = null, pendingX = 0, pendingY = 0, dirtySurf = false;
-  window.addEventListener('scroll', () => { surfaceRects = new WeakMap(); }, { passive: true, capture: true });
+
+  const panelStates = new Map();
+  let panelRectsDirty = true;
+  const syncPanelsList = () => {
+    const els = document.querySelectorAll('.qsend, .tabs, .ext-advanced, .item, .titem');
+    const keep = new Set(els);
+    for (const el of panelStates.keys()) {
+      if (!keep.has(el)) panelStates.delete(el);
+    }
+    for (const el of els) {
+      if (!panelStates.has(el)) {
+        const isRow = el.classList.contains('item') || el.classList.contains('titem');
+        panelStates.set(el, {
+          el, rect: null,
+          maxTilt: isRow ? 2.4 : 2.1,
+          maxSkew: isRow ? 0.55 : 0.48,
+          maxShift: isRow ? 2.2 : 2.6,
+          rx: 0, ry: 0, skx: 0, sky: 0, tx: 0, ty: 0, s: 1, glow: 0, press: 0, dirtyWrite: false,
+        });
+      }
+    }
+    panelRectsDirty = true;
+  };
+  const invalidatePopupRects = () => {
+    surfaceRects = new WeakMap();
+    panelRectsDirty = true;
+  };
+  window.addEventListener('scroll', invalidatePopupRects, { passive: true, capture: true });
+  if (typeof MutationObserver === 'function') {
+    const listEl = $('#list');
+    if (listEl) new MutationObserver(syncPanelsList).observe(listEl, { childList: true });
+  }
+  document.querySelector('.ext-advanced')?.addEventListener('toggle', invalidatePopupRects);
+  syncPanelsList();
+
+  const clampW = (v, lo, hi) => (v < lo ? lo : (v > hi ? hi : v));
+  const measurePopupPanels = () => {
+    panelRectsDirty = false;
+    for (const p of panelStates.values()) {
+      const r = p.el.getBoundingClientRect();
+      p.rect = r.width > 0 && r.height > 0
+        ? { left: r.left - p.tx, top: r.top - p.ty, width: r.width, height: r.height }
+        : null;
+    }
+  };
+  const updatePopupPanels = () => {
+    if (panelRectsDirty) measurePopupPanels();
+    let moving = false;
+    for (const p of panelStates.values()) {
+      const r = p.rect;
+      if (!r) continue;
+      const px = r.left + r.width * 0.5, py = r.top + r.height * 0.5;
+      const dEx = Math.max(0, Math.abs(cx - px) - r.width * 0.5);
+      const dEy = Math.max(0, Math.abs(cy - py) - r.height * 0.5);
+      const dE2 = dEx * dEx + dEy * dEy;
+      const prox = str > 0.01 ? Math.exp(-dE2 / (48 * 48)) * str : 0;
+      const nx = prox > 0.005 ? clampW((cx - px) / (r.width * 0.5 + 20), -1.15, 1.15) : 0;
+      const ny = prox > 0.005 ? clampW((cy - py) / (r.height * 0.5 + 20), -1.15, 1.15) : 0;
+
+      const tRx = -ny * p.maxTilt * prox, tRy = nx * p.maxTilt * prox;
+      const tSkx = nx * ny * p.maxSkew * prox, tSky = -nx * ny * p.maxSkew * 0.65 * prox;
+      const tTx = nx * p.maxShift * prox, tTy = ny * p.maxShift * prox;
+      const tS = 1 + 0.0045 * prox - p.press * 0.01;
+      const tGlow = dE2 === 0 ? prox : prox * 0.65;
+
+      p.rx += (tRx - p.rx) * 0.46; p.ry += (tRy - p.ry) * 0.46;
+      p.skx += (tSkx - p.skx) * 0.46; p.sky += (tSky - p.sky) * 0.46;
+      p.tx += (tTx - p.tx) * 0.46; p.ty += (tTy - p.ty) * 0.46;
+      p.s += (tS - p.s) * 0.5; p.glow += (tGlow - p.glow) * 0.44;
+      p.press *= 0.72; if (p.press < 0.004) p.press = 0;
+
+      const settled = Math.abs(p.rx - tRx) < 0.02 && Math.abs(p.ry - tRy) < 0.02 &&
+        Math.abs(p.tx - tTx) < 0.03 && Math.abs(p.ty - tTy) < 0.03 &&
+        Math.abs(p.glow - tGlow) < 0.01 && p.press === 0 && Math.abs(p.s - tS) < 0.0005;
+      const atRest = settled && prox === 0 && Math.abs(p.rx) < 0.02 && Math.abs(p.ry) < 0.02 &&
+        Math.abs(p.tx) < 0.03 && Math.abs(p.ty) < 0.03 && p.glow < 0.01 && Math.abs(p.s - 1) < 0.0005;
+      if (!settled) moving = true;
+      if (atRest) {
+        if (p.dirtyWrite) {
+          p.rx = p.ry = p.skx = p.sky = p.tx = p.ty = p.glow = 0; p.s = 1; p.dirtyWrite = false;
+          const st = p.el.style;
+          st.removeProperty('--pw-rx'); st.removeProperty('--pw-ry');
+          st.removeProperty('--pw-skx'); st.removeProperty('--pw-sky');
+          st.removeProperty('--pw-tx'); st.removeProperty('--pw-ty');
+          st.removeProperty('--pw-s'); st.removeProperty('--pw-glow');
+        }
+        continue;
+      }
+      p.dirtyWrite = true;
+      const st = p.el.style;
+      st.setProperty('--pw-rx', `${p.rx.toFixed(3)}deg`);
+      st.setProperty('--pw-ry', `${p.ry.toFixed(3)}deg`);
+      st.setProperty('--pw-skx', `${p.skx.toFixed(3)}deg`);
+      st.setProperty('--pw-sky', `${p.sky.toFixed(3)}deg`);
+      st.setProperty('--pw-tx', `${p.tx.toFixed(2)}px`);
+      st.setProperty('--pw-ty', `${p.ty.toFixed(2)}px`);
+      st.setProperty('--pw-s', p.s.toFixed(4));
+      st.setProperty('--pw-glow', p.glow.toFixed(3));
+      if (prox > 0.01 && (p.el.classList.contains('qsend') || p.el.classList.contains('ext-advanced'))) {
+        st.setProperty('--lgx', `${(cx - r.left).toFixed(1)}px`);
+        st.setProperty('--lgy', `${(cy - r.top).toFixed(1)}px`);
+      }
+    }
+    return moving;
+  };
 
   const drawFrame = now => {
     ctx.clearRect(0, 0, w, h);
     for (let i = ripples.length - 1; i >= 0; i--) {
-      if (now - ripples[i].t0 > 800) ripples.splice(i, 1);
+      if (now - ripples[i].t0 > 460) ripples.splice(i, 1);
     }
     if (str > 0.01) {
-      const rx = 160;
+      const rx = 92;
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
-      g.addColorStop(0, `rgba(100, 210, 255, ${(0.12 * str).toFixed(4)})`);
-      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.05 * str).toFixed(4)})`);
+      g.addColorStop(0, `rgba(100, 210, 255, ${(0.14 * str).toFixed(4)})`);
+      g.addColorStop(0.55, `rgba(10, 132, 255, ${(0.055 * str).toFixed(4)})`);
       g.addColorStop(1, 'rgba(10, 132, 255, 0)');
       ctx.fillStyle = g;
       ctx.fillRect(Math.max(0, cx - rx), Math.max(0, cy - rx), rx * 2, rx * 2);
@@ -880,10 +984,10 @@ function initPopupLiquidEffects() {
     const STEP = 28;
     const cols = Math.ceil(w / STEP) + 2;
     const rows = Math.ceil(h / STEP) + 2;
-    const r2 = 120 * 120;
+    const r2 = 74 * 74;
     const activeRipples = ripples.map(rp => {
-      const age = (now - rp.t0) / 800;
-      return { x: rp.x, y: rp.y, radius: age * 220, decay: (1 - age) * (1 - age) };
+      const age = (now - rp.t0) / 460;
+      return { x: rp.x, y: rp.y, radius: age * 135, decay: (1 - age) * (1 - age) };
     });
     const pts = new Array(rows * cols);
     for (let r = 0; r < rows; r++) {
@@ -895,17 +999,17 @@ function initPopupLiquidEffects() {
           const dx = gx - cx, dy = gy - cy, d2 = dx * dx + dy * dy;
           if (d2 < r2 && d2 > 0.01) {
             const dist = Math.sqrt(d2);
-            const f = Math.exp(-d2 / (62 * 62));
-            const p = 15 * str * f * (1 - Math.exp(-dist / 18));
+            const f = Math.exp(-d2 / (38 * 38));
+            const p = 15 * str * f * (1 - Math.exp(-dist / 12));
             ox += (dx / dist) * p; oy += (dy / dist) * p; glow = f * str;
           }
         }
         for (let i = 0; i < activeRipples.length; i++) {
           const rp = activeRipples[i], dx = gx - rp.x, dy = gy - rp.y, dist = Math.hypot(dx, dy);
           const band = dist - rp.radius;
-          if (Math.abs(band) < 60 && dist > 1) {
-            const wv = Math.cos((band / 60) * Math.PI * 0.5);
-            const amp = 10 * rp.decay * wv * Math.sin(band * 0.12);
+          if (Math.abs(band) < 36 && dist > 1) {
+            const wv = Math.cos((band / 36) * Math.PI * 0.5);
+            const amp = 10 * rp.decay * wv * Math.sin(band * 0.16);
             ox += (dx / dist) * amp; oy += (dy / dist) * amp; glow = Math.max(glow, rp.decay * wv * 0.8);
           }
         }
@@ -943,7 +1047,7 @@ function initPopupLiquidEffects() {
   const tick = now => {
     raf = 0;
     const dx = tx - cx, dy = ty - cy, ds = tStr - str;
-    cx += dx * 0.28; cy += dy * 0.28; str += ds * 0.18;
+    cx += dx * 0.54; cy += dy * 0.54; str += ds * 0.4;
     if (dirtySurf && activeSurf) {
       dirtySurf = false;
       let r = surfaceRects.get(activeSurf);
@@ -952,7 +1056,8 @@ function initPopupLiquidEffects() {
       activeSurf.style.setProperty('--lgy', `${(pendingY - r.top).toFixed(1)}px`);
     }
     drawFrame(now);
-    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length) {
+    const moving = updatePopupPanels();
+    if (Math.abs(dx) > 0.25 || Math.abs(dy) > 0.25 || Math.abs(ds) > 0.01 || ripples.length || moving) {
       raf = requestAnimationFrame(tick);
     }
   };
@@ -963,6 +1068,7 @@ function initPopupLiquidEffects() {
     dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = Math.max(1, Math.round(w * dpr)); canvas.height = Math.max(1, Math.round(h * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    invalidatePopupRects();
     drawFrame(performance.now());
   };
   window.addEventListener('resize', resize, { passive: true });
@@ -995,6 +1101,9 @@ function initPopupLiquidEffects() {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     ripples.push({ x: e.clientX, y: e.clientY, t0: performance.now() });
     if (ripples.length > 4) ripples.shift();
+    const hitPanel = e.target?.closest?.('.qsend, .tabs, .ext-advanced, .item, .titem');
+    const st = hitPanel && panelStates.get(hitPanel);
+    if (st) st.press = 1;
     schedule();
   }, { passive: true });
 }
